@@ -1,22 +1,24 @@
-name: CI & Publish
+name: CI & Quality Audit
 
+# Strictly manual trigger - NEVER runs automatically on push
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to pub.dev if all checks pass?'
+        description: 'Publish to pub.dev after all checks pass?'
         type: boolean
         default: false
         required: true
 
 jobs:
   verify:
-    name: Test, Analyze & Pana Verification
+    name: Test, Analyze & Pana Verification (160/160)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Flutter
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
@@ -34,31 +36,28 @@ jobs:
       - name: Run Unit & Widget Tests
         run: flutter test
 
-      - name: Install Pana
+      - name: Verify Package Dry-Run Publish
+        run: dart pub publish --dry-run
+
+      - name: Install Pana Package Analyzer
         run: dart pub global activate pana
 
-      - name: Verify Pana Quality Score (160/160)
-        run: |
-          OUTPUT=$(dart pub global run pana --no-warning . 2>&1)
-          echo "$OUTPUT"
-          SCORE=$(echo "$OUTPUT" | grep -oP 'Points: \K\d+(?=/\d+)' || echo "0")
-          echo "Pana score: $SCORE"
-          if [ "$SCORE" -lt 160 ]; then
-            echo "Pana score is below 160 (current: $SCORE)"
-            exit 1
-          fi
+      - name: Verify Pana Quality Score (Must be 160/160)
+        run: dart pub global run pana --exit-code-threshold 0 .
 
   publish:
-    name: Publish to Pub.dev
+    name: Publish to pub.dev
     needs: verify
     if: inputs.publish == true
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # Required for pub.dev OIDC authentication
+      id-token: write # Required for pub.dev automated publishing using OIDC
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Flutter
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
