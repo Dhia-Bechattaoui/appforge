@@ -1,0 +1,70 @@
+name: CI & Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to pub.dev if all checks pass?'
+        type: boolean
+        default: false
+        required: true
+
+jobs:
+  verify:
+    name: Test, Analyze & Pana Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify Code Formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Run Static Analysis
+        run: flutter analyze lib test
+
+      - name: Run Unit & Widget Tests
+        run: flutter test
+
+      - name: Install Pana
+        run: dart pub global activate pana
+
+      - name: Verify Pana Quality Score (160/160)
+        run: |
+          OUTPUT=$(dart pub global run pana --no-warning . 2>&1)
+          echo "$OUTPUT"
+          SCORE=$(echo "$OUTPUT" | grep -oP 'Points: \K\d+(?=/\d+)' || echo "0")
+          echo "Pana score: $SCORE"
+          if [ "$SCORE" -lt 160 ]; then
+            echo "Pana score is below 160 (current: $SCORE)"
+            exit 1
+          fi
+
+  publish:
+    name: Publish to Pub.dev
+    needs: verify
+    if: inputs.publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for pub.dev OIDC authentication
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Publish Package to pub.dev
+        run: dart pub publish --force
