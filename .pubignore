@@ -1,0 +1,20 @@
+# Files and directories to ignore when packaging for pub.dev
+.dart_tool/
+.packages
+build/
+.idea/
+.agents/
+.vscode/
+*.iml
+*.bak
+.DS_Store
+
+# Exclude native platform builds from example when packaging
+example/build/
+example/.dart_tool/
+example/android/
+example/ios/
+example/macos/
+example/linux/
+example/windows/
+example/web/

@@ -1,0 +1,123 @@
+# AppForge
+
+> A high-performance, zero-dependency Flutter micro-framework providing core infrastructure: Reactive State Management, Route-Bound Dependency Injection, Context-Free Navigation & Overlays, Bidirectional (BiDi) Arabic Localization, Theming, and Responsive Scaling.
+
+## Canonical Reference
+- Full AI & Agent Guide: [AI.md](AI.md)
+- Technical Specification: [SPECIFICATION.md](SPECIFICATION.md)
+- Development Guidelines: [AGENTS.md](AGENTS.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+
+## Core Capabilities & Quick Reference
+
+### 1. Zero External Dependencies
+- Uses strictly the Dart Standard Library and Flutter SDK.
+- Never add or recommend third-party packages for state, routing, localization, or screen sizing.
+
+### 2. Reactive State & Dependency Injection
+- `final count = 0.obs;` -> `count.value++`
+- `Watch((context) => Text('${count.value}'))` (surgical leaf rebuilds)
+- `Watch.listen(target: count, listener: (context, val) => ...)` (side-effects without child rebuild)
+- `count.listen((val) => ...)` / `count.listenPrev((prev, next) => ...)`
+- `items.update((list) => list.add(x))` (in-place mutation + notify)
+- Rx equality is identity-based: compare `a.value == b.value`, never `a == b`
+- `UiState<T>` (idle, loading, success, failure) -> `Watch.state(...)`
+- `App.put<T>(T instance)` / `App.lazyPut<T>(() => instance)`
+- `final service = App.find<T>();`
+- `AppBind<T>(init: () => T(), autoDispose: true, builder: (context, controller) => ...)` (supports nested route instance stacking)
+
+### 3. Context-Free Navigation & Overlays
+- `App.to(Screen(), arguments: args)` / `App.arguments` (tracks native route stack; preserves page args during dialogs)
+- `App.off(Screen())`
+- `App.offAll(Screen())`
+- `App.back([result])`
+- `App.navigatorObserver` (wired automatically by `MasterApp`)
+- `App.snackbar('Title', 'Message', type: SnackType.success)`
+- `App.dialog(Widget child)`
+- `App.showLoading()` / `App.hideLoading()` (isolated DialogRoute dismissal; never pops error dialogs)
+
+### 4. Arabic & BiDi Localization Engine
+- `'key'.tr` (automatically isolates mixed Arabic + Latin tokens, hashtags like `#AppForge`, handles `@user`, and phone numbers `+974...` in RTL)
+- `'welcome'.trParams({'name': 'Ali'})`
+- `'cases'.trPlural(count)` (supports all 6 Arabic plural forms)
+- `'user_status'.trGender()` (morphology agreeing with user gender)
+- `phone.asPhone` / `tag.asTag` (optional manual isolates for raw untranslated strings outside `.tr`)
+- `text.isolateMixed` (automatic/explicit UAX #9 isolation for mixed Latin inside RTL)
+- `text.stripTashkeel` (removes all 9 Harakat marks)
+- `text.stripTatweel` (removes Kashida `ـ`)
+- `text.fuzzyContainsArabic(query)` (diacritic-insensitive search)
+- `text.formatArabic()` (all-in-one proofreading, punctuation normalization & autocorrect)
+- `text.fixArabicPunctuation()`, `text.fixArabicWaw()`, `text.autocorrectArabic()`
+- `text.toArabicKeyboard()` (QWERTY to Arabic mistyping converter)
+- `ArabicTextInputFormatter()` (real-time Word/Gboard style TextField formatter)
+- `sentence.inflectArabicGender(AppGender.female)` (inflects 2nd person pronouns and `كَ` vs `كِ`)
+- `'حمزة'.arabicGender` -> `AppGender.male` (11-category grammatical classifier)
+- Universal built-in dictionary: `'save'.tr` / `'common_save'.tr`, `'close'.tr` / `'common_close'.tr`, `'ok'.tr` / `'common_ok'.tr`, `'loading'.tr`, `'retry'.tr`, `'settings'.tr`
+- Static translation LRU memoization & snapshotting: O(1) nanosecond lookups with zero string allocations or regex passes on re-renders
+- Literal token auto-bypass: UI literals passed to `.tr` (`+974 5500 1234.tr`, `#flutter.tr`, `https://...tr`) are automatically isolated for BiDi without polluting missing keys or auditor reports
+
+### 5. Theming & Responsiveness
+- `App.setThemeMode(ThemeMode.dark)`
+- `context.isDark`
+- `MasterApp(harmonizeTheme: true)` (auto-harmonizes dark/light theme when only one is supplied; zero mutation when both are provided)
+- `AppThemeHarmonizer.contrastRatio(c1, c2)` (W3C WCAG 2.1 relative contrast ratio)
+- `context.contrastColor(bg)` (returns high-contrast text color against dynamic background)
+- `color.ensureContrast(against: bg)` (shifts luminance to enforce >= 4.5:1 ratio)
+- `120.w`, `60.h`, `16.sp`, `12.r`, `16.gapY`, `8.gapX` (.sp scales by design geometry without double-scaling accessibility font scale)
+- `context.w(120)`, `context.h(60)`, `context.sp(16)`, `context.r(12)` (inherited MediaQuery dependency for rotation/split-screen)
+- `App.responsiveMetricsNotifier` (tracks screen size/orientation transitions)
+- `MasterApp(themeMode: ...)` sets initial mode; dynamic toggling via `App.toggleTheme()` always works; derived themes are memoized
+
+### 6. Project Cleaner & Resource Auditor
+- `App.auditTranslations()` (checks cross-locale gaps, empty keys, runtime missing keys, and dead keys)
+- `AppLocalization.instance.missingKeys` / `onMissingKey` (tracks missing requested keys at runtime)
+- `AppAssetAuditor.findUnusedAssets(dir)` (unreferenced images/icons in `assets/`)
+- `AppFileAuditor.findOrphanFiles(dir)` (unimported `.dart` files in `lib/`)
+- `AppCleanReverter.revert(dir)` (restores pruned translations, assets, and files to exact paths)
+- CLI: `dart run appforge:clean` (audit all), `dart run appforge:clean --fix` (prune dead items with backup), `dart run appforge:clean --revert` (1-command rollback)
+
+### 7. Network Connectivity Monitor
+- `App.isOnline` (reactive `Rx<bool>` tracking real internet reachability)
+- `App.isOffline` (convenient boolean check)
+- `App.onConnectivityChanged` (broadcast stream of connectivity transitions)
+- `App.checkConnectivity()` (parallel candidate host racing to 1.1.1.1 / 8.8.8.8, completing on fastest responder)
+- In-flight check deduplication: concurrent callers share a single active lookup.
+- Lifecycle-aware monitoring: backgrounding (`paused`, `hidden`, `detached`) automatically pauses polling; returning (`resumed`) resumes immediately with an active check.
+- `App.startConnectivityMonitor()` / `App.stopConnectivityMonitor()`
+
+### 8. Atomic Key-Value Storage (AppStorage)
+- `await App.initStorage()` (initializes RAM cache from disk at startup)
+- `App.storageRead<T>('key', defaultValue: val)` (0ms synchronous read from RAM)
+- `App.storageRead<List<String>>('tags')` (typed collection read with runtime casting)
+- `App.storageWrite('key', val)` (instant synchronous write + off-main-thread serialized atomic POSIX swap)
+- `App.storageRemove('key')` / `App.storageClear()` / `App.storageHas('key')`
+- `App.storageBox('auth')` (named isolated container partition)
+- `App.storage.listenKey<T>('key', (val) => ...)` (reactive key change listener)
+- JSON types only (throws `ArgumentError` on unsupported types to protect disk state)
+- Copy-on-read isolation (mutating returned lists/maps never silently diverges from disk)
+- Automatic background flush on app pause/exit via `AppLifecycleManager`
+- iOS `Library/Application Support` storage with legacy migration
+- `MasterApp(persistLocale: true, persistTheme: true)` (zero-boilerplate auto persistence)
+
+### 9. Environment Configuration (AppEnv)
+- `await App.loadEnv()` / `AppEnv.load()` (loads .env with `${VAR}` interpolation)
+- RFC & POSIX compliant: CRLF normalization, single-quote literals (`'...'`) bypass interpolation and escape sequences.
+- Undefined variables (`$100`, `$UNKNOWN`) preserved literally without truncation.
+- `App.env('KEY', defaultValue: '')` / `App.envInt()`, `App.envDouble()`, `App.envBool()`
+- `App.hasEnv('KEY')` / `App.envMaskedMap` (automatic secret masking)
+
+### 10. Skeleton Shimmer Engine (AppShimmer)
+- `myWidget.shimmer(enabled: isLoading)` (automatic layout-adaptive shimmer sweep)
+- 60-120Hz zero-jank path caching: Render tree skeleton bones paths are cached on layout and animated via translated canvas without per-frame tree walks or text measurement.
+- `AppShimmer.box()`, `AppShimmer.circle()`, `AppShimmer.text()`, `AppShimmer.listTile()`, `AppShimmer.card()`
+- BiDi reading-direction sweep (sweeps RTL in Arabic, LTR in English automatically)
+
+### 11. In-Memory Cache Engine (AppCache)
+- `AppCache.get<T>('key')` / `AppCache.set('key', value, ttl: Duration(minutes: 5))`
+- Monotonic microsecond clock (`Stopwatch`): TTL expiration is 100% immune to system clock tampering, timezone shifts, and NTP jumps.
+- `AppCache.getOrFetch<T>('key', () => fetcher())` (atomic cache-aside with single-flight request coalescing and clean hit metrics)
+- Generation guard: In-flight fetches started before `clear()` never resurrect stale data into an emptied cache.
+- `AppCache.bucket('name', maxEntries: 50, evictionPolicy: CacheEvictionPolicy.lru)` (.lru, .lfu, .fifo)
+- `AppCache.invalidate('key')` / `AppCache.invalidateWhere(predicate)` / `AppCache.pruneExpired()`
+- `AppCache.stats` (hits, misses, hitRate, evictions, expirations)
+- `App.cache` / `App.cacheBucket('name')` (root facade accessors)
