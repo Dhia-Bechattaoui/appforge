@@ -255,6 +255,7 @@ class AppBidi {
 
       if (_isLatinCodeUnit(code) || isPrefixSymbol) {
         final start = i;
+        final isPhoneSequence = isPrefixSymbol && char == '+';
         if (isPrefixSymbol) i++;
         while (i < length) {
           final c = text.codeUnitAt(i);
@@ -275,6 +276,13 @@ class AppBidi {
                     _isArabicCodeUnit(text.codeUnitAt(i + 1)))) {
               break;
             }
+            i++;
+          } else if (isPhoneSequence &&
+              ch == ' ' &&
+              i + 1 < length &&
+              _isDigit(text.codeUnitAt(i + 1))) {
+            // In phone sequences (+NNN NNNN NNNN), consume spaces between
+            // digit groups to keep the entire number in one LRI isolate.
             i++;
           } else {
             break;
@@ -306,5 +314,10 @@ class AppBidi {
   static bool _isLatinCodeUnit(int code) {
     return (code >= 0x0041 && code <= 0x005A) || // A-Z
         (code >= 0x0061 && code <= 0x007A); // a-z
+  }
+
+  /// Checks if the code unit is an ASCII digit (0-9).
+  static bool _isDigit(int code) {
+    return code >= 48 && code <= 57;
   }
 }

@@ -378,6 +378,7 @@ class _AppShimmerState extends State<AppShimmer>
 
   void _startAnimation() {
     if (widget.loop != null) {
+      _loopCount = 0;
       _controller.forward(from: 0.0);
     } else {
       _controller.repeat();
@@ -407,15 +408,21 @@ class _AppShimmerState extends State<AppShimmer>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) {
-      return widget.child;
-    }
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Tones derived from ambient theme brightness so bones fully conceal content.
     final base = widget.baseColor ??
-        (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0));
+        Color.alphaBlend(
+          scheme.onSurface.withValues(alpha: isDark ? 0.16 : 0.09),
+          scheme.surface,
+        );
     final highlight = widget.highlightColor ??
-        (isDark ? const Color(0xFF334155) : const Color(0xFFF8FAFC));
+        Color.alphaBlend(
+          scheme.onSurface.withValues(alpha: isDark ? 0.26 : 0.03),
+          scheme.surface,
+        );
 
     final textDir = Directionality.maybeOf(context) ?? TextDirection.ltr;
     final effectiveDir = widget.direction == ShimmerDirection.auto
@@ -424,9 +431,21 @@ class _AppShimmerState extends State<AppShimmer>
             : ShimmerDirection.ltr)
         : widget.direction;
 
+    // DefaultTextStyle and IconTheme make text and icons invisible during shimmer,
+    // while keeping exact dimensions, baseline, and wrapping.
+    final themedChild = widget.enabled
+        ? DefaultTextStyle.merge(
+            style: const TextStyle(color: Colors.transparent),
+            child: IconTheme.merge(
+              data: const IconThemeData(color: Colors.transparent),
+              child: widget.child,
+            ),
+          )
+        : widget.child;
+
     return AnimatedBuilder(
       animation: _controller,
-      child: widget.child,
+      child: RepaintBoundary(child: themedChild),
       builder: (context, child) {
         return _ShimmerRenderWidget(
           enabled: widget.enabled,
@@ -434,6 +453,7 @@ class _AppShimmerState extends State<AppShimmer>
           highlightColor: highlight,
           progress: _controller.value,
           direction: effectiveDir,
+          textDirection: textDir,
           child: child!,
         );
       },
@@ -488,18 +508,245 @@ Shader createShimmerShader({
   ).createShader(bounds);
 }
 
-/// Representation of a skeleton placeholder bone extracted automatically from layout.
-class _SkeletonBone {
-  final RRect? rrect;
-  final Offset? circleCenter;
-  final double? circleRadius;
+/// Outcome of skeletonizing a render subtree.
+class _SkeletonScan {
+  const _SkeletonScan.content()
+      : hasContent = true,
+        placeholders = const <Path>[];
 
-  _SkeletonBone.rrect(this.rrect)
-      : circleCenter = null,
-        circleRadius = null;
+  const _SkeletonScan.pending(this.placeholders) : hasContent = false;
 
-  _SkeletonBone.circle({required this.circleCenter, required this.circleRadius})
-      : rrect = null;
+  static const _SkeletonScan empty = _SkeletonScan.pending(<Path>[]);
+
+  final bool hasContent;
+
+  /// Placeholder shapes in shimmer-local coordinates awaiting emission.
+  final List<Path> placeholders;
+}
+
+/// Walks a laid-out render tree and derives skeleton bone geometry.
+///
+/// Composition model:
+/// * **Content** (paragraphs, icons, images, circular avatars, leaf controls)
+///   is concealed by bones matching its exact geometry.
+/// * **Surfaces** (`Card`, `Material`, decorated / coloured `Container`s) that
+///   host content are left untouched so the real structural silhouette,
+///   elevation, borders, and gradients remain visible while loading.
+/// * A painted surface hosting **no** content (e.g. a grey placeholder box)
+///   becomes a bone itself, using its own shape (rounded, stadium, circle...).
+class _SkeletonCollector {
+  _SkeletonCollector(this.textDirection);
+
+  final TextDirection textDirection;
+  final Path bones = Path();
+
+  /// Whether a scrollable viewport was encountered. Viewport scrolling does not
+  /// relayout ancestors, so such geometry must be re-derived every frame.
+  bool encounteredViewport = false;
+
+  _SkeletonScan scan(RenderObject node, Matrix4 transform) {
+    if (node is RenderBox) {
+      if (!node.hasSize || node.size.isEmpty) return _SkeletonScan.empty;
+      if (node is RenderOffstage && node.offstage) return _SkeletonScan.empty;
+
+      if (node is RenderParagraph) {
+        _emitParagraph(node, transform);
+        return const _SkeletonScan.content();
+      }
+
+      if (node is RenderImage) {
+        _emitLocal(
+          Path()
+            ..addRRect(RRect.fromRectAndRadius(
+              Offset.zero & node.size,
+              const Radius.circular(8),
+            )),
+          transform,
+        );
+        return const _SkeletonScan.content();
+      }
+
+      final decoration = node is RenderDecoratedBox ? node.decoration : null;
+      if (decoration is BoxDecoration && decoration.shape == BoxShape.circle) {
+        _emitLocal(
+          Path()
+            ..addOval(Rect.fromCircle(
+              center: node.size.center(Offset.zero),
+              radius: node.size.shortestSide / 2,
+            )),
+          transform,
+        );
+        return const _SkeletonScan.content();
+      }
+    }
+
+    if (node is RenderViewportBase) encounteredViewport = true;
+
+    var hasChildren = false;
+    var anyContent = false;
+    final pending = <Path>[];
+
+    node.visitChildren((child) {
+      hasChildren = true;
+      if (!node.paintsChild(child)) return;
+      final childTransform = transform.clone();
+      node.applyPaintTransform(child, childTransform);
+      final result = scan(child, childTransform);
+      if (result.hasContent) {
+        anyContent = true;
+      } else {
+        pending.addAll(result.placeholders);
+      }
+    });
+
+    if (anyContent) {
+      // Placeholder siblings of real content are concealed individually.
+      _emitAll(pending);
+      return const _SkeletonScan.content();
+    }
+
+    if (node is! RenderBox || !_paintsOwnSurface(node, hasChildren)) {
+      // Transparent layout node: defer placeholders to the enclosing surface.
+      return _SkeletonScan.pending(pending);
+    }
+
+    if (pending.isNotEmpty) {
+      // A visible surface hosting placeholders: keep the surface, bone the inside.
+      _emitAll(pending);
+      return const _SkeletonScan.content();
+    }
+
+    // A painted node with nothing inside is itself a placeholder.
+    return _SkeletonScan.pending(
+        <Path>[_transformed(_shapeOf(node), transform)]);
+  }
+
+  /// Emits the deferred placeholders of the root scan, or a full-bounds bone
+  /// when the subtree paints nothing recognisable.
+  void finish(_SkeletonScan root, Size size) {
+    if (root.hasContent) return;
+    if (root.placeholders.isNotEmpty) {
+      _emitAll(root.placeholders);
+      return;
+    }
+    bones.addRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8)),
+    );
+  }
+
+  void _emitParagraph(RenderParagraph node, Matrix4 transform) {
+    final local = Path();
+    final text = node.text.toPlainText();
+    final isIcon = text.runes.length == 1 &&
+        (node.text.style?.fontFamily?.contains('Icon') ?? false);
+
+    if (isIcon) {
+      local.addRRect(RRect.fromRectAndRadius(
+        Offset.zero & node.size,
+        Radius.circular(node.size.shortestSide / 4),
+      ));
+    } else {
+      final boxes = node.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: text.length),
+      );
+      if (boxes.isEmpty) {
+        local.addRRect(RRect.fromRectAndRadius(
+          Offset.zero & node.size,
+          const Radius.circular(4),
+        ));
+      } else {
+        for (final box in boxes) {
+          local.addRRect(
+            RRect.fromRectAndRadius(
+              box.toRect().inflate(1.0),
+              const Radius.circular(4),
+            ),
+          );
+        }
+      }
+    }
+    _emitLocal(local, transform);
+  }
+
+  static bool _paintsOwnSurface(RenderBox node, bool hasChildren) {
+    if (node is RenderDecoratedBox) return true;
+    if (node is RenderPhysicalShape) {
+      return node.color.a > 0 || node.elevation > 0;
+    }
+    if (node is RenderPhysicalModel) {
+      return node.color.a > 0 || node.elevation > 0;
+    }
+    if (node is RenderCustomPaint) {
+      return node.painter != null || node.foregroundPainter != null;
+    }
+    if (node is RenderPointerListener ||
+        node is RenderMouseRegion ||
+        node is RenderMetaData ||
+        node is RenderSemanticsGestureHandler ||
+        node is RenderTapRegion) {
+      return false;
+    }
+    if (node is RenderProxyBoxWithHitTestBehavior) return true;
+    if (hasChildren) return false;
+    if (node is RenderProxyBox ||
+        node is RenderShiftedBox ||
+        node is ContainerRenderObjectMixin) {
+      return false;
+    }
+    return true;
+  }
+
+  Path _shapeOf(RenderBox node) {
+    final rect = Offset.zero & node.size;
+
+    if (node is RenderPhysicalShape) {
+      return node.clipper?.getClip(node.size) ?? (Path()..addRect(rect));
+    }
+    if (node is RenderPhysicalModel) {
+      if (node.shape == BoxShape.circle) {
+        return Path()
+          ..addOval(Rect.fromCircle(
+            center: rect.center,
+            radius: rect.shortestSide / 2,
+          ));
+      }
+      final radius = node.borderRadius;
+      if (radius != null && radius != BorderRadius.zero) {
+        return Path()..addRRect(radius.toRRect(rect));
+      }
+    }
+    if (node is RenderDecoratedBox) {
+      final decoration = node.decoration;
+      final isPlainRect = decoration is BoxDecoration &&
+          decoration.borderRadius == null &&
+          decoration.shape == BoxShape.rectangle;
+      if (!isPlainRect) {
+        try {
+          return decoration.getClipPath(rect, textDirection);
+        } on UnsupportedError {
+          // Decoration does not expose a clip path; fall through.
+        }
+      }
+    }
+    return Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(6)));
+  }
+
+  Path _transformed(Path local, Matrix4 transform) {
+    final translation = MatrixUtils.getAsTranslation(transform);
+    if (translation != null) return local.shift(translation);
+    return local.transform(transform.storage);
+  }
+
+  void _emitLocal(Path local, Matrix4 transform) {
+    bones.addPath(_transformed(local, transform), Offset.zero);
+  }
+
+  void _emitAll(List<Path> paths) {
+    for (final path in paths) {
+      bones.addPath(path, Offset.zero);
+    }
+  }
 }
 
 /// Custom RenderWidget that inspects child layout and paints matching skeleton bones.
@@ -509,6 +756,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
   final Color highlightColor;
   final double progress;
   final ShimmerDirection direction;
+  final TextDirection textDirection;
 
   const _ShimmerRenderWidget({
     required super.child,
@@ -517,6 +765,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
     required this.highlightColor,
     required this.progress,
     required this.direction,
+    required this.textDirection,
   });
 
   @override
@@ -527,6 +776,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
       highlightColor: highlightColor,
       progress: progress,
       direction: direction,
+      textDirection: textDirection,
     );
   }
 
@@ -540,7 +790,8 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
       ..baseColor = baseColor
       ..highlightColor = highlightColor
       ..progress = progress
-      ..direction = direction;
+      ..direction = direction
+      ..textDirection = textDirection;
   }
 }
 
@@ -550,9 +801,10 @@ class _RenderShimmer extends RenderProxyBox {
   Color _highlightColor;
   double _progress;
   ShimmerDirection _direction;
+  TextDirection _textDirection;
 
-  Path? _cachedBonesPath;
-  Size? _cachedLayoutSize;
+  Path? _cachedBones;
+  bool _volatileGeometry = false;
 
   _RenderShimmer({
     required bool enabled,
@@ -560,17 +812,18 @@ class _RenderShimmer extends RenderProxyBox {
     required Color highlightColor,
     required double progress,
     required ShimmerDirection direction,
+    required TextDirection textDirection,
     RenderBox? child,
   })  : _enabled = enabled,
         _baseColor = baseColor,
         _highlightColor = highlightColor,
         _progress = progress,
         _direction = direction,
+        _textDirection = textDirection,
         super(child);
 
   void _invalidateBones() {
-    _cachedBonesPath = null;
-    _cachedLayoutSize = null;
+    _cachedBones = null;
   }
 
   @override
@@ -596,6 +849,7 @@ class _RenderShimmer extends RenderProxyBox {
     _enabled = value;
     _invalidateBones();
     markNeedsPaint();
+    markNeedsSemanticsUpdate();
   }
 
   set baseColor(Color value) {
@@ -622,159 +876,62 @@ class _RenderShimmer extends RenderProxyBox {
     markNeedsPaint();
   }
 
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    if (!_enabled || child == null) {
-      super.paint(context, offset);
-      return;
-    }
-
-    if (_cachedBonesPath == null || _cachedLayoutSize != size) {
-      final bones = <_SkeletonBone>[];
-      _collectBones(child!, Offset.zero, bones);
-
-      if (bones.isEmpty) {
-        // Fallback if no specific leaf elements found
-        bones.add(_SkeletonBone.rrect(
-          RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8)),
-        ));
-      }
-
-      final path = Path();
-      for (final bone in bones) {
-        if (bone.rrect != null) {
-          path.addRRect(bone.rrect!);
-        } else if (bone.circleCenter != null && bone.circleRadius != null) {
-          path.addOval(Rect.fromCircle(
-            center: bone.circleCenter!,
-            radius: bone.circleRadius!,
-          ));
-        }
-      }
-
-      _cachedBonesPath = path;
-      _cachedLayoutSize = size;
-    }
-
-    final shader = createShimmerShader(
-      bounds: Offset.zero & size,
-      progress: _progress,
-      baseColor: _baseColor,
-      highlightColor: _highlightColor,
-      direction: _direction,
-    );
-
-    final paint = Paint()
-      ..shader = shader
-      ..style = PaintingStyle.fill;
-
-    context.canvas.save();
-    context.canvas.translate(offset.dx, offset.dy);
-    context.canvas.drawPath(_cachedBonesPath!, paint);
-    context.canvas.restore();
+  set textDirection(TextDirection value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    _invalidateBones();
+    markNeedsPaint();
   }
 
-  void _collectBones(
-    RenderObject node,
-    Offset parentOffset,
-    List<_SkeletonBone> bones,
-  ) {
-    Offset currentOffset = parentOffset;
-    if (node.parentData is BoxParentData) {
-      currentOffset += (node.parentData as BoxParentData).offset;
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (_enabled) return size.contains(position);
+    return super.hitTest(result, position: position);
+  }
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    if (_enabled) return;
+    super.visitChildrenForSemantics(visitor);
+  }
+
+  Path _deriveBones() {
+    final collector = _SkeletonCollector(_textDirection);
+    final transform = Matrix4.identity();
+    applyPaintTransform(child!, transform);
+    final root = collector.scan(child!, transform);
+    collector.finish(root, size);
+    _volatileGeometry = collector.encounteredViewport;
+    return collector.bones;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    // 1. Real tree: surfaces, cards, elevation, borders, gradients.
+    super.paint(context, offset);
+    if (!_enabled || child == null) return;
+
+    // 2. Opaque bones concealing content, swept by the shimmer gradient.
+    if (_cachedBones == null || _volatileGeometry) {
+      _cachedBones = _deriveBones();
     }
 
-    // 1. Text Paragraphs
-    if (node is RenderParagraph) {
-      final text = node.text.toPlainText();
-      final isIcon = text.runes.length == 1 &&
-          (node.text.style?.fontFamily?.contains('Icon') ?? false);
+    final paint = Paint()
+      ..shader = createShimmerShader(
+        bounds: Offset.zero & size,
+        progress: _progress,
+        baseColor: _baseColor,
+        highlightColor: _highlightColor,
+        direction: _direction,
+      )
+      ..style = PaintingStyle.fill;
 
-      if (isIcon) {
-        bones.add(_SkeletonBone.circle(
-          circleCenter:
-              currentOffset + Offset(node.size.width / 2, node.size.height / 2),
-          circleRadius: node.size.width / 2,
-        ));
-        return;
-      }
-
-      final boxes = node.getBoxesForSelection(
-        TextSelection(baseOffset: 0, extentOffset: text.length),
-      );
-
-      if (boxes.isEmpty) {
-        bones.add(_SkeletonBone.rrect(
-          RRect.fromRectAndRadius(
-            currentOffset & node.size,
-            const Radius.circular(4),
-          ),
-        ));
-      } else {
-        for (final box in boxes) {
-          final lineRect = Rect.fromLTRB(
-            currentOffset.dx + box.left,
-            currentOffset.dy + box.top + 1,
-            currentOffset.dx + box.right,
-            currentOffset.dy + box.bottom - 1,
-          );
-          bones.add(_SkeletonBone.rrect(
-            RRect.fromRectAndRadius(
-              lineRect,
-              const Radius.circular(4),
-            ),
-          ));
-        }
-      }
-      return;
-    }
-
-    // 2. Images
-    if (node is RenderImage) {
-      bones.add(_SkeletonBone.rrect(
-        RRect.fromRectAndRadius(
-          currentOffset & node.size,
-          const Radius.circular(8),
-        ),
-      ));
-      return;
-    }
-
-    // 3. Decorated Boxes with Circular Shape (e.g. CircleAvatars)
-    if (node is RenderDecoratedBox) {
-      final decoration = node.decoration;
-      if (decoration is BoxDecoration) {
-        if (decoration.shape == BoxShape.circle) {
-          bones.add(_SkeletonBone.circle(
-            circleCenter: currentOffset +
-                Offset(node.size.width / 2, node.size.height / 2),
-            circleRadius: node.size.width / 2,
-          ));
-          return;
-        }
-      }
-    }
-
-    // 4. Custom leaf boxes without children (e.g. Chips, small colored boxes)
-    bool hasChildren = false;
-    node.visitChildren((child) => hasChildren = true);
-    if (!hasChildren &&
-        node is RenderBox &&
-        node.size.width > 0 &&
-        node.size.height > 0) {
-      bones.add(_SkeletonBone.rrect(
-        RRect.fromRectAndRadius(
-          currentOffset & node.size,
-          const Radius.circular(6),
-        ),
-      ));
-      return;
-    }
-
-    // Recursively walk children
-    node.visitChildren((childNode) {
-      _collectBones(childNode, currentOffset, bones);
-    });
+    final canvas = context.canvas;
+    canvas.save();
+    canvas.translate(offset.dx, offset.dy);
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawPath(_cachedBones!, paint);
+    canvas.restore();
   }
 }
 

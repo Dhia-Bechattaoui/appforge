@@ -107,8 +107,10 @@
 - `App.hasEnv('KEY')` / `App.envMaskedMap` (automatic secret masking)
 
 ### 10. Skeleton Shimmer Engine (AppShimmer)
-- `myWidget.shimmer(enabled: isLoading)` (automatic layout-adaptive shimmer sweep)
+- `myWidget.shimmer(enabled: isLoading)` (automatic surface-aware layout-adaptive shimmer sweep)
+- Surface-aware compositor: Real structural surfaces (`Card`, elevation, borders, backgrounds) remain visible while text lines and icons are concealed by matching skeleton bones.
 - 60-120Hz zero-jank path caching: Render tree skeleton bones paths are cached on layout and animated via translated canvas without per-frame tree walks or text measurement.
+- Absorbs pointer events during loading to prevent accidental button clicks.
 - `AppShimmer.box()`, `AppShimmer.circle()`, `AppShimmer.text()`, `AppShimmer.listTile()`, `AppShimmer.card()`
 - BiDi reading-direction sweep (sweeps RTL in Arabic, LTR in English automatically)
 

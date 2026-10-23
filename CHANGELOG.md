@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-10-23
+
+### Added
+- **Surface-Aware Skeleton Compositor (`AppShimmer`)**: Structural host surfaces (`Card`, `Material`, decorated / bordered `Container`s, elevation, shadows) remain fully visible and styled during shimmer loading, while text lines, icons, and leaf content are concealed by matching skeleton bones.
+- **Loading Gesture Absorption**: Automatically absorbs pointer click events on shimmering child elements to prevent accidental button taps or input activation while loading.
+
+### Improved
+- **Theme-Derived Shimmer Tones**: Ambient base and highlight colors are automatically blended against `colorScheme.surface` and `onSurface` across Material 2 and Material 3 for optimal contrast and zero content bleed.
+- **Glyph Concealment**: Uses `DefaultTextStyle.merge` and `IconTheme.merge` with transparent ink during shimmer to preserve exact typography bounds and line breaks without sub-pixel font bleed.
+
+### Fixed
+- **Phone Number BiDi Isolation (`AppBidi.isolateMixed`)**: Phone numbers embedded within Arabic text (e.g. `رقم الهاتف: +974 5500 1234`) were being split into separate LRI-isolated segments (`⁦+974⁩ 5500 1234`), leaving trailing digit groups as neutral-direction characters that the Unicode BiDi algorithm reordered in RTL contexts, visually producing `974+` instead of `+974`. The entire `+NNN NNNN NNNN` sequence is now consumed as a single LRI-isolated block (`⁦+974 5500 1234⁩`).
+- **Hot Reload Translation Refresh (`MasterApp`)**: Editing translation strings no longer requires a full app restart. `_MasterAppState.reassemble()` now re-snapshots the `AppTranslations.keys` getter and clears the static lookup cache on every hot reload, so modified dictionary values are reflected instantly.
+
 ## [0.0.1] - 2026-10-22
 
 Initial production release of **AppForge**, an all-in-one Flutter micro-framework engineered from first principles with **strictly zero external dependencies** (`0 dependencies`).

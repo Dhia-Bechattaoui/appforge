@@ -262,6 +262,18 @@ class _MasterAppState extends State<MasterApp> {
   }
 
   @override
+  void reassemble() {
+    super.reassemble();
+    // Hot reload updates the AppTranslations subclass code (its `keys` getter
+    // now returns the modified map), but the localization engine still holds a
+    // stale snapshot taken at init-time. Re-snapshot and clear the static cache
+    // so every `.tr` lookup reads the fresh dictionary immediately.
+    if (widget.translations != null) {
+      AppLocalization.instance.translations = widget.translations;
+    }
+  }
+
+  @override
   void dispose() {
     if (_localePersistenceListener != null) {
       AppLocalization.instance.localeNotifier

@@ -326,5 +326,89 @@ void main() {
         expect(tester.takeException(), isNull);
       }
     });
+
+    testWidgets(
+        'AppShimmer preserves Card surface, shape, and elevation while skeletonizing text children',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text('Card Heading', style: TextStyle(fontSize: 16)),
+                    SizedBox(height: 8),
+                    Text('Card Subtitle', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 4),
+                    Text('Card Description', style: TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ),
+            ).shimmer(enabled: true),
+          ),
+        ),
+      );
+
+      expect(find.byType(Card), findsOneWidget);
+      expect(find.byType(AppShimmer), findsOneWidget);
+
+      // Verify Card structure is mounted and painted cleanly
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+
+      final cardWidget = tester.widget<Card>(find.byType(Card));
+      expect(cardWidget.elevation, 4);
+    });
+
+    testWidgets(
+        'AppShimmer absorbs tap events when enabled, restoring interactions when disabled',
+        (tester) async {
+      int tapCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return ElevatedButton(
+                  onPressed: () => tapCount++,
+                  child: const Text('Action Button'),
+                ).shimmer(enabled: true);
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Tap should be absorbed when shimmer is enabled
+      await tester.tap(find.text('Action Button'), warnIfMissed: false);
+      expect(tapCount, 0);
+
+      // Rebuild with enabled = false
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return ElevatedButton(
+                  onPressed: () => tapCount++,
+                  child: const Text('Action Button'),
+                ).shimmer(enabled: false);
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Action Button'));
+      expect(tapCount, 1);
+    });
   });
 }

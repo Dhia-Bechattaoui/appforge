@@ -769,13 +769,15 @@ final maskedMap = App.envMaskedMap; // {'SECRET_KEY': 'sh****te'}
 
 ## 13. Zero-Dependency Skeleton Shimmer Engine (`AppShimmer`)
 
-GPU-accelerated skeleton placeholders with automatic Light/Dark mode tone adaptation, presets, BiDi reading-direction sweep, and 60-120Hz animation path caching:
+GPU-accelerated skeleton placeholders with automatic Light/Dark mode tone adaptation, presets, BiDi reading-direction sweep, 60-120Hz animation path caching, and **surface-aware compositor**:
+- **Preserves Surfaces**: Host containers (`Card`, `Material`, decorated / bordered `Container`s, shadows, elevation) remain fully visible and styled while loading.
+- **Conceals Content**: Text lines, icons, and leaf content are concealed by matching skeleton bones swept by the shimmer gradient.
+- **Inert during Loading**: Touches on shimmering buttons/elements are absorbed to prevent accidental triggers while loading.
 
 ```dart
-// 1. 100% Automatic Layout Shimmer (Zero Configuration, Zero Flags!):
-// Wrap ANY real UI widget tree directly. The shimmer automatically inspects
-// layout geometry once, caches skeleton bone paths relative to layout, and
-// animates at 60-120Hz with zero per-frame render tree walks or glyph layout passes:
+// 1. 100% Automatic Surface-Aware Layout Shimmer (Zero Flags!):
+// Wrap ANY real UI widget tree directly (e.g. a Card). The shimmer automatically
+// paints the card surface/elevation and overlays exact matching skeleton bones:
 myRealProfileCard.shimmer(
   enabled: isLoading,
   direction: ShimmerDirection.auto, // BiDi: sweeps RTL in Arabic, LTR in English!

@@ -1,6 +1,6 @@
 name: appforge
 description: A zero-dependency, all-in-one Flutter micro-framework providing reactive state, context-free navigation, BiDi Arabic localization, responsive scaling, and storage.
-version: 0.0.1
+version: 0.0.2
 homepage: https://github.com/Dhia-Bechattaoui/appforge
 repository: https://github.com/Dhia-Bechattaoui/appforge
 issue_tracker: https://github.com/Dhia-Bechattaoui/appforge/issues

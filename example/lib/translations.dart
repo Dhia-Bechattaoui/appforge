@@ -505,8 +505,7 @@ class DemoAppTranslations extends AppTranslations {
           'فقدان الذاكرة: جلب عبر الشبكة في 500ms، وتم حفظه الآن.',
       'cache_coalesce_title': 'دمج الطلبات المتزامنة (Single-Flight)',
       'cache_coalesce_msg': 'تم دمج 3 طلبات في عملية جلب واحدة فقط!',
-      'cache_coalesce_toast':
-          'تم تشغيل 3 طلبات متزامنة: @fetches جلب شبكة + @hits ضربات ذاكرة مدمجة!',
+      'cache_coalesce_toast': 'تم تشغيل 3 طلبات متزامنة: @fetches جلب شبكة + @hits ضربات ذاكرة مدمجة!',
       'cache_coalesce_all_hit':
           'تم جلب الـ 3 طلبات فوراً من الذاكرة في 0ms (بدون أي اتصال بالشبكة)!',
       'cache_cleared_title': 'تم تفريغ الذاكرة المؤقتة',
