@@ -202,16 +202,19 @@ dart run appforge:clean --json
 
 ## 3. Comparison
 
-| Feature | AppForge | GetX | Bloc / Riverpod |
-| :--- | :---: | :---: | :---: |
-| **External Dependencies** | **0** | Multiple | Multiple |
-| **Translation Hot Reload** | **Instant 0ms (No App Restart)** | Requires Hot Restart | Requires CodeGen / Restart |
-| **Context-Free Navigation** | **Yes** | Yes | No |
-| **BiDi Unicode UAX #9 Engine** | **Native Built-in** | No | No |
-| **6-Case Arabic Pluralization** | **Native Built-in** | No | Requires `intl` |
-| **Dead-Key Pruner CLI (`--fix`)**| **Native Built-in** | No | No |
-| **Responsive Sizing (`.w`, `.h`)** | **Native Built-in** | No | Requires `screenutil` |
-| **Memory Leak Protection** | **Auto-disposed Routes** | Manual/Fragile | Auto-dispose |
+| Feature | AppForge | GetX | Bloc | Riverpod |
+| :--- | :---: | :---: | :---: | :---: |
+| **Core Package Dependencies** | **0** | 0 (SDK only) | 1 (`meta`) | Multiple (`collection`, `riverpod`) |
+| **Full-Stack Ecosystem Dependencies**<br>*(State, Nav, Storage, Responsive, Shimmer)* | **0 (Only `appforge`)** | **Multiple** (`get_storage` + `path_provider` + `screenutil` + `shimmer`) | **Multiple** (`bloc` + `shared_preferences` + `go_router` + `screenutil`) | **Multiple** (`riverpod` + `shared_preferences` + `go_router` + `screenutil`) |
+| **Crash-Immune Atomic Storage** | **Built-in (`AppStorage`)** | Requires `get_storage` (needs `path_provider`) | Requires `shared_preferences` / `hive` | Requires `shared_preferences` / `hive` |
+| **Responsive Sizing (`.w`, `.h`, `.sp`)** | **Built-in (`AppResponsive`)** | Requires `flutter_screenutil` | Requires `flutter_screenutil` | Requires `flutter_screenutil` |
+| **Adaptive Skeleton Shimmer** | **Built-in (`AppShimmer`)** | Requires `shimmer` | Requires `shimmer` | Requires `shimmer` |
+| **Translation Hot Reload** | **Instant 0ms (No Restart)** | Requires Hot Restart | Requires CodeGen / Restart | Requires CodeGen / Restart |
+| **Context-Free Navigation** | **Yes** | Yes | No (`BuildContext`) | No (`BuildContext`) |
+| **BiDi Unicode UAX #9 Engine** | **Native Built-in** | No | No | No |
+| **6-Case Arabic Pluralization** | **Native Built-in** | No | Requires `intl` | Requires `intl` |
+| **Dead-Key Pruner CLI (`--fix`)**| **Native Built-in** | No | No | No |
+| **Memory Leak Protection** | **Auto-disposed Routes** | Manual / Fragile | Auto-dispose (`BlocProvider`) | Auto-dispose (`autoDispose`) |
 
 ---
 
