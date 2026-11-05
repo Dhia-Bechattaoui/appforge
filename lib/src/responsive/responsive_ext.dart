@@ -38,6 +38,22 @@ extension AppResponsiveNumExtension on num {
   /// ```
   double get r => AppResponsive.scaleRadius(this);
 
+  /// Fraction of total screen width (e.g. 0.8.sw or 1.sw).
+  ///
+  /// Example:
+  /// ```dart
+  /// Container(width: 0.9.sw)
+  /// ```
+  double get sw => AppResponsive.screenWidth * this;
+
+  /// Fraction of total screen height (e.g. 0.5.sh or 1.sh).
+  ///
+  /// Example:
+  /// ```dart
+  /// Container(height: 0.5.sh)
+  /// ```
+  double get sh => AppResponsive.screenHeight * this;
+
   /// Creates a horizontal [SizedBox] spacer with this width in logical pixels.
   ///
   /// Example:

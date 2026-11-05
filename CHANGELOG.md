@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-11-05
+
+### Added
+- **Screen Fraction Responsive Extensions (`.sw`, `.sh`)**: Added `.sw` (screen width fraction, e.g. `0.8.sw`) and `.sh` (screen height fraction, e.g. `0.5.sh`) directly on `num` via `AppResponsiveNumExtension` for ergonomic percentage-based responsive layouts.
+- **Modular Sub-Library Exports**: Added granular library entry points to allow selective imports and prevent namespace collisions (e.g. `.tr`, `.obs`, `Rx<T>`) when integrated into projects using third-party state managers like GetX, Bloc, or Riverpod:
+  - `package:appforge/responsive.dart`: Responsive scaling (`.w`, `.h`, `.sp`, `.r`, `.sw`, `.sh`, `.gapX`, `.gapY`) and `AppResponsive`.
+  - `package:appforge/storage.dart`: `AppStorage` atomic crash-immune storage engine.
+  - `package:appforge/ui.dart`: Shimmer effects and context-free overlays.
+  - `package:appforge/navigation.dart`: Context-free routing and transitions.
+  - `package:appforge/theme.dart`: Dynamic theming, WCAG AA harmonizer, and contrast utilities.
+  - `package:appforge/localization.dart`: BiDi isolation, Arabic grammar, plurals, and `.tr` extensions.
+  - `package:appforge/state.dart`: `Rx<T>`, `Watch`, `UiState`, and `AppLocator`.
+  - `package:appforge/config.dart`: POSIX `.env` parser and environment manager.
+  - `package:appforge/utils.dart`: Network connectivity, context extensions, and validators.
+
 ## [0.0.2] - 2026-10-23
 
 ### Added
