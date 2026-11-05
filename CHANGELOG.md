@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-05
+
+### Added
+- **Pure-Dart CLI Decoupling (`appforge:clean`)**:
+  - Decoupled `AppTranslations` base contract into dedicated `lib/src/localization/app_translations.dart` with zero `dart:ui` / Flutter SDK dependencies, enabling `dart run appforge:clean` to run standalone in pure Dart environments and CI/CD pipelines without `dart:ui` availability errors.
+  - Added `AppTranslationsLocalesExtension` preserving backwards-compatible `.supportedLocales` resolution for Flutter applications with zero breaking changes.
+  - Relocated literal token heuristics (`isLiteralToken`) to `AppTranslations` to allow static CLI evaluation of URLs, phone numbers, and handles without Flutter engine dependencies.
+- **Font & Asset Manifest Preservation (`AppAssetAuditor`)**:
+  - Integrated `pubspec.yaml` manifest scanning into `AppAssetAuditor` to guarantee declared fonts and configuration assets are preserved and never incorrectly flagged as unreferenced assets during audits.
+- **Enhanced Translation Discovery & AST Pruning (`AppTranslationAuditor`)**:
+  - Added strict heuristics for JSON translation files to filter out configuration files (e.g. `firebase.json`, `package.json`, `tsconfig.json`).
+  - Improved multi-line map entry pruning in Dart translation files with robust comma, semicolon, and brace boundary tracking.
+- **Trash & Backup Isolation**:
+  - Added global exclusion of `.appforge_trash` across `AppTranslationAuditor`, `AppAssetAuditor`, and `AppFileAuditor` to prevent previous backup revisions from interfering with active project scans.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added

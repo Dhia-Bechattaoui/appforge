@@ -49,6 +49,11 @@ class AppAssetAuditor {
         .where((f) => f.path.endsWith('.dart'))
         .toList();
 
+    // Read pubspec.yaml to preserve declared fonts and asset manifests
+    final pubspecFile = File('${projectDir.path}/pubspec.yaml');
+    final pubspecContent =
+        pubspecFile.existsSync() ? pubspecFile.readAsStringSync() : '';
+
     // Cache source code content for fast substring searches
     final sourceContents = <String>[];
     for (final f in codeFiles) {
@@ -67,10 +72,12 @@ class AppAssetAuditor {
       );
 
       // An asset is considered used if its full relative path (e.g. 'assets/images/cat.png'),
-      // or its filename (e.g. 'cat.png') is found in any Dart source file.
-      final isUsed = sourceContents.any((code) {
+      // or its filename (e.g. 'cat.png') is found in any Dart source file or pubspec.yaml.
+      final isUsedInCode = sourceContents.any((code) {
         return code.contains(fullRelativePath) || code.contains(fileName);
       });
+      final isUsedInPubspec = pubspecContent.contains(fullRelativePath);
+      final isUsed = isUsedInCode || isUsedInPubspec;
 
       if (!isUsed) {
         unusedAssets.add(asset);

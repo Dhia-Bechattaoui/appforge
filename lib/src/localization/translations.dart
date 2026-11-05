@@ -1,34 +1,15 @@
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
+import 'app_translations.dart';
 import 'bidi_utils.dart';
 import 'common_translations.dart';
 import 'gender.dart';
 import 'orthography.dart';
 import 'plurals.dart';
 
-/// Base contract for app translations dictionary.
-///
-/// Example:
-/// ```dart
-/// class MyTranslations extends AppTranslations {
-///   @override
-///   Map<String, Map<String, String>> get keys => {
-///     'en_US': {'hello': 'Hello', 'welcome': 'Welcome, @name!'},
-///     'ar_QA': {
-///       'hello': 'مرحباً',
-///       'welcome_male': 'أهلاً بكَ يا @name!',
-///       'welcome_female': 'أهلاً بكِ يا @name!',
-///       'welcome': 'أهلاً بك يا @name!',
-///     },
-///   };
-/// }
-/// ```
-abstract class AppTranslations {
-  const AppTranslations();
+export 'app_translations.dart';
 
-  /// Map of locale keys to key-value translation pairs.
-  Map<String, Map<String, String>> get keys;
-
+extension AppTranslationsLocalesExtension on AppTranslations {
   /// List of supported locales derived from dictionary keys.
   List<ui.Locale> get supportedLocales {
     return keys.keys.map((code) {
@@ -39,19 +20,6 @@ abstract class AppTranslations {
       return ui.Locale(parts[0]);
     }).toList();
   }
-
-  /// Creates an in-memory [AppTranslations] instance from a Map.
-  factory AppTranslations.fromMap(Map<String, Map<String, String>> map) =>
-      _MapAppTranslations(map);
-}
-
-class _MapAppTranslations extends AppTranslations {
-  const _MapAppTranslations(this._keys);
-
-  final Map<String, Map<String, String>> _keys;
-
-  @override
-  Map<String, Map<String, String>> get keys => _keys;
 }
 
 /// Central localization manager for AppForge.
@@ -63,32 +31,10 @@ class AppLocalization {
 
   static final AppLocalization instance = AppLocalization._();
 
-  static final RegExp _phoneNumberRegex = RegExp(r'^\+?[0-9\s\-()]{6,}$');
-  static final RegExp _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-
   /// Determines whether [key] is a literal UI token (such as a hashtag, handle,
   /// URL, phone number, or email address) rather than a translatable dictionary key.
   /// Literal tokens bypass missing key tracking when invoked via `.tr`.
-  static bool isLiteralToken(String key) {
-    if (key.isEmpty) return true;
-    final trimmed = key.trim();
-    if (trimmed.startsWith('#') || trimmed.startsWith('@')) {
-      return true;
-    }
-    if (trimmed.startsWith('http://') ||
-        trimmed.startsWith('https://') ||
-        trimmed.startsWith('mailto:') ||
-        trimmed.startsWith('tel:')) {
-      return true;
-    }
-    if (trimmed.startsWith('+') || _phoneNumberRegex.hasMatch(trimmed)) {
-      return true;
-    }
-    if (_emailRegex.hasMatch(trimmed)) {
-      return true;
-    }
-    return false;
-  }
+  static bool isLiteralToken(String key) => AppTranslations.isLiteralToken(key);
 
   AppTranslations? _translations;
   Map<String, Map<String, String>> _snapshottedKeys = const {};

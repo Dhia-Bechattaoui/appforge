@@ -25,6 +25,7 @@ class AppFileAuditor {
       'build',
       '.idea',
       '.agents',
+      '.appforge_trash',
     ],
   }) {
     final libDir = Directory('${projectDir.path}/lib');

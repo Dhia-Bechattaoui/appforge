@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import '../localization/common_translations.dart';
-import '../localization/translations.dart';
+import '../localization/app_translations.dart';
 import 'audit_report.dart';
 
 /// Represents a discovered translation dictionary file in a project.
@@ -105,7 +105,7 @@ class AppTranslationAuditor {
       for (final rk in runtimeMissingKeys) {
         if (!allKeys.contains(rk) &&
             !AppCommonTranslations.isCommonKey(rk) &&
-            !AppLocalization.isLiteralToken(rk)) {
+            !AppTranslations.isLiteralToken(rk)) {
           unregistered.add(rk);
         }
       }
@@ -146,6 +146,7 @@ class AppTranslationAuditor {
       'build',
       '.idea',
       '.agents',
+      '.appforge_trash',
     ],
   }) {
     final locations = <String, List<String>>{};
@@ -190,6 +191,7 @@ class AppTranslationAuditor {
       'build',
       '.idea',
       '.agents',
+      '.appforge_trash',
     ],
   }) {
     return scanDirectoryWithLocations(
@@ -208,12 +210,15 @@ class AppTranslationAuditor {
       'build',
       '.idea',
       '.agents',
+      '.appforge_trash',
       'ios',
       'android',
       'macos',
       'linux',
       'windows',
       'web',
+      'node_modules',
+      'functions',
     ],
   }) {
     final discovered = <DiscoveredTranslationFile>[];
@@ -234,8 +239,8 @@ class AppTranslationAuditor {
         if (parsed != null && parsed.allKeys.isNotEmpty) {
           discovered.add(parsed);
         }
-      } else if (entity.path.endsWith('.json') ||
-          entity.path.endsWith('.arb')) {
+      } else if (entity.path.endsWith('.arb') ||
+          (entity.path.endsWith('.json') && _isLikelyTranslationJson(entity))) {
         final parsed = extractFromJsonFile(entity);
         if (parsed != null && parsed.allKeys.isNotEmpty) {
           discovered.add(parsed);
@@ -246,22 +251,108 @@ class AppTranslationAuditor {
     return discovered;
   }
 
+  static bool _isLikelyTranslationJson(File file) {
+    final path = file.path.replaceAll('\\', '/');
+    if (path.contains('/assets/') ||
+        path.endsWith('/firebase.json') ||
+        path.endsWith('/package.json') ||
+        path.endsWith('/tsconfig.json')) {
+      return false;
+    }
+    final name =
+        file.uri.pathSegments.last.toLowerCase().replaceAll('.json', '');
+    const dirKeywords = [
+      'translation',
+      'translations',
+      'locales',
+      'locale',
+      'l10n',
+      'i18n',
+      'lang',
+    ];
+    final segments = file.uri.pathSegments.map((s) => s.toLowerCase()).toList();
+    if (segments.any((s) => dirKeywords.contains(s))) {
+      return true;
+    }
+    return RegExp(r'^[a-z]{2}(_[a-z]{2,4})?$').hasMatch(name);
+  }
+
+  static bool _isLikelyTranslationDart(File file) {
+    final path = file.path.replaceAll('\\', '/');
+    if (path.contains('/.dart_tool/') ||
+        path.contains('/build/') ||
+        path.contains('/test/') ||
+        path.contains('/.agents/')) {
+      return false;
+    }
+    final name =
+        file.uri.pathSegments.last.toLowerCase().replaceAll('.dart', '');
+    const dirKeywords = [
+      'translation',
+      'translations',
+      'locales',
+      'locale',
+      'l10n',
+      'i18n',
+      'lang',
+    ];
+    final segments = file.uri.pathSegments.map((s) => s.toLowerCase()).toList();
+    if (segments.any((s) => dirKeywords.contains(s))) {
+      return true;
+    }
+    return RegExp(r'^[a-z]{2}(_[a-z]{2,4})?$').hasMatch(name);
+  }
+
+  static String _normalizeLocaleName(String name) {
+    final cleaned = name.replaceAll('.dart', '').trim();
+    final camelMatch = RegExp(r'^([a-z]{2})([A-Z]{2})$').firstMatch(cleaned);
+    if (camelMatch != null) {
+      return '${camelMatch.group(1)!.toLowerCase()}_${camelMatch.group(2)!.toUpperCase()}';
+    }
+    final snakeMatch = RegExp(r'^([a-z]{2})_([a-z]{2})$', caseSensitive: false)
+        .firstMatch(cleaned);
+    if (snakeMatch != null) {
+      return '${snakeMatch.group(1)!.toLowerCase()}_${snakeMatch.group(2)!.toUpperCase()}';
+    }
+    return cleaned;
+  }
+
   /// Statically parses a Dart file to extract defined translation keys and line numbers.
   static DiscoveredTranslationFile? extractFromDartFile(File file) {
     if (!file.existsSync()) return null;
     try {
       final content = file.readAsStringSync();
-      if (!content.contains('AppTranslations') &&
-          !content.contains('get keys =>') &&
-          !content.contains('get keys=>')) {
+      final hasTranslationMarker = content.contains('AppTranslations') ||
+          content.contains('get keys =>') ||
+          content.contains('get keys=>');
+      final hasMap = content.contains('Map<String,') ||
+          content.contains('Map<dynamic,') ||
+          content.contains('const Map') ||
+          content.contains('final Map');
+
+      if (!hasTranslationMarker &&
+          !(_isLikelyTranslationDart(file) && hasMap)) {
         return null;
       }
 
       final lines = content.split('\n');
       final entryRegex =
           RegExp(r'''^\s*['"]([a-zA-Z0-9_\-]+)['"]\s*:\s*(.*)$''');
+      final mapDefRegex = RegExp(
+          r'''(?:(?:const|final)\s+)?Map<String,\s*String>\s+([a-zA-Z0-9_]+)\s*=\s*\{''');
 
       String? currentLocale;
+      final filename = file.uri.pathSegments.last.replaceAll('.dart', '');
+      String? defaultLocale;
+      final mapMatch = mapDefRegex.firstMatch(content);
+      if (mapMatch != null) {
+        final varName = mapMatch.group(1)!;
+        defaultLocale = _normalizeLocaleName(varName);
+      }
+      if (defaultLocale == null || defaultLocale.isEmpty) {
+        defaultLocale = _normalizeLocaleName(filename);
+      }
+
       final keysByLocale = <String, Map<String, String>>{};
       final keyLineNumbers = <String, int>{};
 
@@ -274,19 +365,40 @@ class AppTranslationAuditor {
           if (rest.startsWith('{')) {
             currentLocale = key;
             keysByLocale.putIfAbsent(currentLocale, () => <String, String>{});
-          } else if (currentLocale != null) {
-            String val = rest;
-            if (val.endsWith(',')) {
-              val = val.substring(0, val.length - 1).trim();
+          } else {
+            final activeLocale = currentLocale ?? defaultLocale;
+            if (activeLocale != 'app_translations' &&
+                !activeLocale.contains('translations')) {
+              keysByLocale.putIfAbsent(activeLocale, () => <String, String>{});
+              String val = rest;
+              if (val.isEmpty && i + 1 < lines.length) {
+                int nextIdx = i + 1;
+                while (nextIdx < lines.length) {
+                  final nextTrimmed = lines[nextIdx].trim();
+                  if (nextTrimmed.isNotEmpty) {
+                    val = nextTrimmed;
+                    break;
+                  }
+                  nextIdx++;
+                }
+              }
+
+              if (val.endsWith(',')) {
+                val = val.substring(0, val.length - 1).trim();
+              }
+              if ((val.startsWith("'") && val.endsWith("'")) ||
+                  (val.startsWith('"') && val.endsWith('"'))) {
+                val = val.substring(1, val.length - 1);
+              }
+              keysByLocale[activeLocale]![key] = val;
+              keyLineNumbers.putIfAbsent(key, () => i + 1);
             }
-            if ((val.startsWith("'") && val.endsWith("'")) ||
-                (val.startsWith('"') && val.endsWith('"'))) {
-              val = val.substring(1, val.length - 1);
-            }
-            keysByLocale[currentLocale]![key] = val;
-            keyLineNumbers.putIfAbsent(key, () => i + 1);
           }
         }
+      }
+
+      if (keysByLocale.isEmpty || keysByLocale.values.every((m) => m.isEmpty)) {
+        return null;
       }
 
       return DiscoveredTranslationFile(
@@ -373,6 +485,7 @@ class AppTranslationAuditor {
     final cleaned = <String>[];
     int removedCount = 0;
     bool skippingMultiline = false;
+    bool skippingToEntryEnd = false;
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -380,6 +493,16 @@ class AppTranslationAuditor {
       if (skippingMultiline) {
         if (line.contains("'''") || line.contains('"""')) {
           skippingMultiline = false;
+        }
+        continue;
+      }
+
+      if (skippingToEntryEnd) {
+        final trimmed = line.trim();
+        if (trimmed.endsWith(',') ||
+            trimmed.endsWith(';') ||
+            trimmed.endsWith('}')) {
+          skippingToEntryEnd = false;
         }
         continue;
       }
@@ -399,6 +522,11 @@ class AppTranslationAuditor {
               rest.startsWith('"""') && !rest.substring(3).contains('"""');
           if (openedSingleTriple || openedDoubleTriple) {
             skippingMultiline = true;
+          } else if (rest.isEmpty ||
+              (!rest.endsWith(',') &&
+                  !rest.endsWith(';') &&
+                  !rest.endsWith('}'))) {
+            skippingToEntryEnd = true;
           }
           continue; // Pruned!
         }
