@@ -82,10 +82,22 @@ class AppNavigator {
   /// Gets the currently active [Route], if tracked.
   Route<dynamic>? get currentRoute => _observer.currentRoute;
 
+  /// Name of the currently active route, if available.
+  String get currentRouteName => currentRoute?.settings.name ?? '';
+
   final List<Object?> _fallbackArgumentsStack = [];
+  Map<String, String> _parameters = {};
+
+  /// Current route parameters (e.g. from `/user/:id` or query parameters).
+  Map<String, String> get parameters => Map.unmodifiable(_parameters);
+
+  /// Sets the active route parameters.
+  void setParameters(Map<String, String> params) {
+    _parameters = params;
+  }
 
   /// Gets the current arguments passed to the active route.
-  Object? get currentArguments {
+  dynamic get currentArguments {
     if (_observer._routeStack.isNotEmpty) {
       return _observer.currentArguments;
     }
@@ -113,11 +125,13 @@ class AppNavigator {
   /// App.to(const ProfileScreen(), arguments: user);
   /// ```
   Future<T?> to<T>(
-    Widget page, {
+    dynamic page, {
     Object? arguments,
+    Map<String, String>? parameters,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
     final state = currentState;
     if (state == null) {
@@ -125,13 +139,18 @@ class AppNavigator {
       return Future.value(null);
     }
 
+    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.add(arguments);
 
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+
     final route = AppRouteBuilder.buildRoute<T>(
-      page: page,
+      page: effectivePage,
       settings: RouteSettings(name: routeName, arguments: arguments),
       transition: transition,
       duration: duration ?? const Duration(milliseconds: 300),
+      fullscreenDialog: fullscreenDialog,
     );
 
     return state.push<T>(route).then((res) {
@@ -150,13 +169,15 @@ class AppNavigator {
   /// ```dart
   /// App.off(const HomeScreen());
   /// ```
-  Future<T?> off<T, TO>(
-    Widget page, {
+  Future<T?> off<T>(
+    dynamic page, {
     Object? arguments,
-    TO? result,
+    Map<String, String>? parameters,
+    dynamic result,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
     final state = currentState;
     if (state == null) {
@@ -164,19 +185,24 @@ class AppNavigator {
       return Future.value(null);
     }
 
+    if (parameters != null) setParameters(parameters);
     if (_fallbackArgumentsStack.isNotEmpty) {
       _fallbackArgumentsStack.removeLast();
     }
     _fallbackArgumentsStack.add(arguments);
 
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+
     final route = AppRouteBuilder.buildRoute<T>(
-      page: page,
+      page: effectivePage,
       settings: RouteSettings(name: routeName, arguments: arguments),
       transition: transition,
       duration: duration ?? const Duration(milliseconds: 300),
+      fullscreenDialog: fullscreenDialog,
     );
 
-    return state.pushReplacement<T, TO>(route, result: result).then((res) {
+    return state.pushReplacement<T, dynamic>(route, result: result).then((res) {
       if (_observer._routeStack.isEmpty && _fallbackArgumentsStack.isNotEmpty) {
         _fallbackArgumentsStack.remove(arguments);
       }
@@ -193,12 +219,14 @@ class AppNavigator {
   /// App.offAll(const LoginScreen());
   /// ```
   Future<T?> offAll<T>(
-    Widget page, {
+    dynamic page, {
     Object? arguments,
+    Map<String, String>? parameters,
     bool Function(Route<dynamic>)? predicate,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
     final state = currentState;
     if (state == null) {
@@ -206,19 +234,102 @@ class AppNavigator {
       return Future.value(null);
     }
 
+    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.clear();
     _fallbackArgumentsStack.add(arguments);
 
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+
     final route = AppRouteBuilder.buildRoute<T>(
-      page: page,
+      page: effectivePage,
       settings: RouteSettings(name: routeName, arguments: arguments),
       transition: transition,
       duration: duration ?? const Duration(milliseconds: 300),
+      fullscreenDialog: fullscreenDialog,
     );
 
     return state.pushAndRemoveUntil<T>(
       route,
       predicate ?? (route) => false,
+    );
+  }
+
+  /// Pushes a named route onto the navigation stack.
+  Future<T?> toNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    bool preventDuplicates = true,
+  }) {
+    if (preventDuplicates && currentRouteName == routeName) {
+      return Future.value(null);
+    }
+    final state = currentState;
+    if (state == null) {
+      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      return Future.value(null);
+    }
+    if (parameters != null) setParameters(parameters);
+    _fallbackArgumentsStack.add(arguments);
+    return state.pushNamed<T>(routeName, arguments: arguments).then((res) {
+      if (_observer._routeStack.isEmpty && _fallbackArgumentsStack.isNotEmpty) {
+        _fallbackArgumentsStack.remove(arguments);
+      }
+      return res;
+    });
+  }
+
+  /// Replaces the current route with a named route.
+  Future<T?> offNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    dynamic result,
+  }) {
+    final state = currentState;
+    if (state == null) {
+      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      return Future.value(null);
+    }
+    if (parameters != null) setParameters(parameters);
+    if (_fallbackArgumentsStack.isNotEmpty) {
+      _fallbackArgumentsStack.removeLast();
+    }
+    _fallbackArgumentsStack.add(arguments);
+    return state
+        .pushReplacementNamed<T, dynamic>(
+      routeName,
+      arguments: arguments,
+      result: result,
+    )
+        .then((res) {
+      if (_observer._routeStack.isEmpty && _fallbackArgumentsStack.isNotEmpty) {
+        _fallbackArgumentsStack.remove(arguments);
+      }
+      return res;
+    });
+  }
+
+  /// Clears the entire navigation stack and pushes a named route.
+  Future<T?> offAllNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    bool Function(Route<dynamic>)? predicate,
+  }) {
+    final state = currentState;
+    if (state == null) {
+      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      return Future.value(null);
+    }
+    if (parameters != null) setParameters(parameters);
+    _fallbackArgumentsStack.clear();
+    _fallbackArgumentsStack.add(arguments);
+    return state.pushNamedAndRemoveUntil<T>(
+      routeName,
+      predicate ?? (route) => false,
+      arguments: arguments,
     );
   }
 
@@ -242,4 +353,26 @@ class AppNavigator {
     _observer._routeStack.clear();
     _fallbackArgumentsStack.clear();
   }
+}
+
+/// Declarative route specification for named page navigation.
+class AppPage<T> {
+  /// The route path (e.g. `'/home'`).
+  final String name;
+
+  /// Page builder widget.
+  final Widget Function() page;
+
+  /// Optional dependency binding executed before page mounting.
+  final dynamic binding;
+
+  /// Page transition style.
+  final AppTransition transition;
+
+  const AppPage({
+    required this.name,
+    required this.page,
+    this.binding,
+    this.transition = AppTransition.native,
+  });
 }

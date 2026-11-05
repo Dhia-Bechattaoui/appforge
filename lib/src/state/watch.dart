@@ -15,6 +15,10 @@ class Watch extends StatefulWidget {
 
   const Watch(this.builder, {super.key});
 
+  /// Creates a [Watch] widget without requiring [BuildContext] in the builder callback.
+  Watch.builder(Widget Function() builder, {super.key})
+      : builder = ((_) => builder());
+
   /// Factory constructor for rendering discrete [UiState] machines safely.
   ///
   /// Guarantees that conflicting or impossible states (e.g., loading while showing error)

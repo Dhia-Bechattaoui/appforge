@@ -31,11 +31,13 @@ class AppRouteBuilder {
     RouteSettings? settings,
     AppTransition transition = AppTransition.native,
     Duration duration = const Duration(milliseconds: 300),
+    bool fullscreenDialog = false,
   }) {
     if (transition == AppTransition.native) {
       return MaterialPageRoute<T>(
         builder: (_) => page,
         settings: settings,
+        fullscreenDialog: fullscreenDialog,
       );
     }
 
@@ -43,6 +45,7 @@ class AppRouteBuilder {
       return PageRouteBuilder<T>(
         pageBuilder: (_, __, ___) => page,
         settings: settings,
+        fullscreenDialog: fullscreenDialog,
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       );
@@ -51,6 +54,7 @@ class AppRouteBuilder {
     return PageRouteBuilder<T>(
       pageBuilder: (_, __, ___) => page,
       settings: settings,
+      fullscreenDialog: fullscreenDialog,
       transitionDuration: duration,
       reverseTransitionDuration: duration,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {

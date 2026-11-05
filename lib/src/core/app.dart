@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart' show ScaffoldMessengerState, ThemeMode;
+import 'package:flutter/material.dart'
+    show ScaffoldMessengerState, ThemeMode, ThemeData, TextTheme, Theme;
 import 'package:flutter/widgets.dart';
 import '../cache/cache.dart';
 import '../cleaner/audit_report.dart';
@@ -59,6 +61,11 @@ class App {
   /// Gets the current [ui.TextDirection].
   static ui.TextDirection get textDirection =>
       AppLocalization.instance.textDirection;
+
+  /// Universally sets application translations dictionary across all components.
+  static set translations(AppTranslations trans) {
+    AppLocalization.instance.setTranslations(trans);
+  }
 
   /// Universal zero-dependency localization delegates for [MaterialApp].
   ///
@@ -196,11 +203,13 @@ class App {
     T Function() builder, {
     String? tag,
     bool permanent = false,
+    bool fenix = false,
   }) {
     AppLocator.instance.lazyPut<T>(
       builder,
       tag: tag,
       permanent: permanent,
+      fenix: fenix,
     );
   }
 
@@ -281,7 +290,37 @@ class App {
   static BuildContext? get context => AppNavigator.instance.currentContext;
 
   /// Arguments passed into the currently active route via [App.to], [App.off], or [App.offAll].
-  static Object? get arguments => AppNavigator.instance.currentArguments;
+  static dynamic get arguments => AppNavigator.instance.currentArguments;
+
+  /// Current route parameters (e.g. from `/user/:id` or query parameters).
+  static Map<String, String> get parameters => AppNavigator.instance.parameters;
+
+  /// Name of the currently active route.
+  static String get currentRoute => AppNavigator.instance.currentRouteName;
+
+  /// Active screen width.
+  static double get width => AppResponsive.screenWidth;
+
+  /// Active screen height.
+  static double get height => AppResponsive.screenHeight;
+
+  /// Device / system locale.
+  static ui.Locale? get deviceLocale => ui.PlatformDispatcher.instance.locale;
+
+  /// Updates application locale at runtime.
+  static Future<void> updateLocale(ui.Locale locale) async => setLocale(locale);
+
+  /// Changes application theme mode.
+  static void changeThemeMode(ThemeMode mode) => setThemeMode(mode);
+
+  /// Current [ThemeData] from active context.
+  static ThemeData get theme => Theme.of(context!);
+
+  /// Current [TextTheme] from active context.
+  static TextTheme get textTheme => Theme.of(context!).textTheme;
+
+  /// Whether a modal loading overlay is currently active.
+  static bool get isDialogOpen => AppOverlay.instance.isLoadingOpen;
 
   /// Whether the navigator can currently pop the top route.
   static bool get canPop => AppNavigator.instance.canPop;
@@ -293,18 +332,22 @@ class App {
   /// App.to(const ProfileScreen(), arguments: user);
   /// ```
   static Future<T?> to<T>(
-    Widget page, {
+    dynamic page, {
     Object? arguments,
+    Map<String, String>? parameters,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
     return AppNavigator.instance.to<T>(
       page,
       arguments: arguments,
+      parameters: parameters,
       transition: transition,
       duration: duration,
       routeName: routeName,
+      fullscreenDialog: fullscreenDialog,
     );
   }
 
@@ -314,21 +357,25 @@ class App {
   /// ```dart
   /// App.off(const HomeScreen());
   /// ```
-  static Future<T?> off<T, TO>(
-    Widget page, {
+  static Future<T?> off<T>(
+    dynamic page, {
     Object? arguments,
-    TO? result,
+    Map<String, String>? parameters,
+    dynamic result,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
-    return AppNavigator.instance.off<T, TO>(
+    return AppNavigator.instance.off<T>(
       page,
       arguments: arguments,
+      parameters: parameters,
       result: result,
       transition: transition,
       duration: duration,
       routeName: routeName,
+      fullscreenDialog: fullscreenDialog,
     );
   }
 
@@ -339,20 +386,24 @@ class App {
   /// App.offAll(const LoginScreen());
   /// ```
   static Future<T?> offAll<T>(
-    Widget page, {
+    dynamic page, {
     Object? arguments,
+    Map<String, String>? parameters,
     bool Function(Route<dynamic>)? predicate,
     AppTransition transition = AppTransition.native,
     Duration? duration,
     String? routeName,
+    bool fullscreenDialog = false,
   }) {
     return AppNavigator.instance.offAll<T>(
       page,
       arguments: arguments,
+      parameters: parameters,
       predicate: predicate,
       transition: transition,
       duration: duration,
       routeName: routeName,
+      fullscreenDialog: fullscreenDialog,
     );
   }
 
@@ -364,6 +415,71 @@ class App {
   /// ```
   static void back<T>([T? result]) {
     AppNavigator.instance.back<T>(result);
+  }
+
+  /// Pushes a named route onto the navigation stack without requiring [BuildContext].
+  ///
+  /// Example:
+  /// ```dart
+  /// App.toNamed('/home', arguments: user);
+  /// ```
+  static Future<T?>? toNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    bool preventDuplicates = true,
+  }) {
+    return AppNavigator.instance.toNamed<T>(
+      routeName,
+      arguments: arguments,
+      parameters: parameters,
+      preventDuplicates: preventDuplicates,
+    );
+  }
+
+  /// Replaces the current route with a named route.
+  static Future<T?>? offNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    dynamic result,
+  }) {
+    return AppNavigator.instance.offNamed<T>(
+      routeName,
+      arguments: arguments,
+      parameters: parameters,
+      result: result,
+    );
+  }
+
+  /// Clears the entire navigation stack and pushes a named route.
+  static Future<T?>? offAllNamed<T>(
+    String routeName, {
+    Object? arguments,
+    Map<String, String>? parameters,
+    bool Function(Route<dynamic>)? predicate,
+  }) {
+    return AppNavigator.instance.offAllNamed<T>(
+      routeName,
+      arguments: arguments,
+      parameters: parameters,
+      predicate: predicate,
+    );
+  }
+
+  /// Generates a cryptographically strong RFC 4122 v4 UUID string.
+  ///
+  /// Example:
+  /// ```dart
+  /// final id = App.uuid();
+  /// ```
+  static String uuid() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
   }
 
   // --- Context-Free Overlays, Dialogs & Feedback ---
@@ -383,6 +499,11 @@ class App {
     VoidCallback? onTap,
     Color? backgroundColor,
     Color? textColor,
+    Color? colorText,
+    SnackPosition? snackPosition,
+    Widget? mainButton,
+    EdgeInsetsGeometry? margin,
+    double? borderRadius,
   }) {
     AppOverlay.instance.showSnackbar(
       title,
@@ -393,6 +514,11 @@ class App {
       onTap: onTap,
       backgroundColor: backgroundColor,
       textColor: textColor,
+      colorText: colorText,
+      snackPosition: snackPosition,
+      mainButton: mainButton,
+      margin: margin,
+      borderRadius: borderRadius,
     );
   }
 

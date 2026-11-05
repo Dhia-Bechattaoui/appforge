@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-05
+
+### Added
+- **Reactive Collections & Typed Observers (`RxList`, `RxMap`, `RxSet`, `Rxn`)**: First-class zero-dependency reactive collection types implementing standard `List`, `Map`, and `Set` with automatic dependency registration in `Watch` and fine-grained mutation notification (`assignAll`, `assign`, `add`, `remove`, `clear`).
+- **Reactive Workers (`Worker`, `ever`, `everAll`, `debounce`, `interval`)**: Lifecycle-managed workers to execute side-effects on reactive value updates with native cancellation, debouncing, and throttling support.
+- **Stream Binding (`bindStream`)**: Added `bindStream(Stream<T>)` directly on `Rx<T>` and reactive collections for non-blocking asynchronous data stream synchronization.
+- **Service & View Architectural Bases (`AppService`, `AppView<T>`, `AppBindings`, `BindingsBuilder`)**:
+  - `AppService`: Dedicated base class for long-lived application singletons and background services.
+  - `AppView<T>`: Ergonomic base `StatelessWidget` providing typed `controller` access via `AppLocator`.
+  - `AppBindings` & `BindingsBuilder`: Modular dependency injection declaration contracts for route bindings.
+- **Collection & Iterable Functional Extensions**:
+  - `AppListExtension<E>`: Added `assignAll`, `assign`, and `firstWhereOrNull` on standard Dart `List<E>`.
+  - `AppIterableExtension<E>`: Added `firstWhereOrNull` on standard Dart `Iterable<E>`.
+- **Reactive Type Aliases**: Added `RxBool`, `RxInt`, `RxDouble`, `RxString`, `RxnString`, `RxnBool`, `RxnInt`, and `RxnDouble`.
+- **Named Route Navigation (`App.toNamed`, `App.offNamed`, `App.offAllNamed`, `AppPage`)**:
+  - Context-free named navigation methods on `AppNavigator` and `App` facade.
+  - Declarative route registration via `AppPage<T>`.
+  - Route duplicate prevention via `preventDuplicates` parameter on `toNamed`.
+  - `fullscreenDialog` support across all route transition styles.
+  - Dynamic arguments resolution (`dynamic get arguments`).
+- **Cryptographic UUID v4 Generator (`App.uuid()`)**: Zero-dependency RFC 4122 v4 UUID generator using `math.Random.secure()`.
+- **Enhanced Overlay Customization (`App.snackbar`)**:
+  - Trailing action widget support via `mainButton`.
+  - Custom floating inset via `margin`.
+  - Custom corner styling via `borderRadius`.
+  - Directional alignment via `snackPosition` (`top`, `bottom`).
+- **Runtime Localization Enhancements**:
+  - Added `App.translations` static setter for dynamic translation dictionary initialization.
+  - Added asynchronous `App.updateLocale(ui.Locale)` returning `Future<void>`.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added

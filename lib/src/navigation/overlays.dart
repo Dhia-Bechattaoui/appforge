@@ -17,6 +17,20 @@ enum AppSnackbarType {
   info,
 }
 
+/// Screen positioning for snackbars.
+enum SnackPosition {
+  /// Top of screen.
+  top,
+
+  /// Bottom of screen.
+  bottom;
+
+  // ignore: constant_identifier_names
+  static const SnackPosition TOP = SnackPosition.top;
+  // ignore: constant_identifier_names
+  static const SnackPosition BOTTOM = SnackPosition.bottom;
+}
+
 /// Context-free overlay and feedback engine for AppForge.
 ///
 /// Handles snackbars, modal dialogs, bottom sheets, and loading spinners
@@ -51,6 +65,11 @@ class AppOverlay {
     VoidCallback? onTap,
     Color? backgroundColor,
     Color? textColor,
+    Color? colorText,
+    SnackPosition? snackPosition,
+    Widget? mainButton,
+    EdgeInsetsGeometry? margin,
+    double? borderRadius,
   }) {
     final state = scaffoldMessengerKey.currentState;
     if (state == null) {
@@ -63,7 +82,7 @@ class AppOverlay {
 
     final palette = _resolveSnackbarPalette(type);
     final effectiveBg = backgroundColor ?? palette.background;
-    final effectiveFg = textColor ?? palette.foreground;
+    final effectiveFg = colorText ?? textColor ?? palette.foreground;
     final effectiveIcon = icon ?? palette.icon;
 
     final snackBar = SnackBar(
@@ -71,14 +90,14 @@ class AppOverlay {
       behavior: SnackBarBehavior.floating,
       elevation: 4.0,
       backgroundColor: effectiveBg,
-      margin: const EdgeInsets.all(16.0),
+      margin: margin ?? const EdgeInsets.all(16.0),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(borderRadius ?? 12.0),
         side: BorderSide(color: palette.border, width: 1.0),
       ),
       content: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(borderRadius ?? 12.0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -111,6 +130,10 @@ class AppOverlay {
                 ],
               ),
             ),
+            if (mainButton != null) ...[
+              const SizedBox(width: 8.0),
+              mainButton,
+            ],
           ],
         ),
       ),

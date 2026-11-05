@@ -8,7 +8,7 @@ import 'rx.dart';
 /// dangling streams, and memory leaks.
 abstract class AppController {
   bool _isInitialized = false;
-  bool _isReady = false;
+  bool _isControllerReady = false;
   bool _isDisposed = false;
   final List<RxSubscription> _autoSubscriptions = [];
 
@@ -16,10 +16,13 @@ abstract class AppController {
   bool get isInitialized => _isInitialized;
 
   /// Whether [onReady] has been executed.
-  bool get isReady => _isReady;
+  bool get isControllerReady => _isControllerReady;
 
   /// Whether [onClose] has been executed.
   bool get isDisposed => _isDisposed;
+
+  /// Whether this controller has been disposed/closed.
+  bool get isClosed => _isDisposed;
 
   /// Called immediately when the controller is registered or instantiated.
   @mustCallSuper
@@ -30,7 +33,7 @@ abstract class AppController {
   /// Called after the widget frame is rendered and the controller is bound to UI.
   @mustCallSuper
   void onReady() {
-    _isReady = true;
+    _isControllerReady = true;
   }
 
   /// Registers an [RxSubscription] to be automatically cancelled when this
@@ -64,6 +67,9 @@ abstract class AppController {
   /// Called when the app becomes hidden (Flutter 3.13+).
   void onHidden() {}
 
+  /// Manually triggers rebuilds or notifies listeners for specific IDs.
+  void update([List<Object>? ids]) {}
+
   /// Called when the route or widget binding is removed from the navigation stack.
   ///
   /// Cleans up all auto-subscriptions and frees resources.
@@ -76,6 +82,9 @@ abstract class AppController {
     _autoSubscriptions.clear();
   }
 }
+
+/// Base service class for long-lived, singleton background and core services.
+abstract class AppService extends AppController {}
 
 /// Internal identifier key for registered instances.
 class _InstanceKey {
@@ -103,6 +112,7 @@ class _InstanceEntry<T> {
   final T Function()? builder;
   final Future<T> Function()? asyncBuilder;
   final bool permanent;
+  final bool fenix;
   final bool isLazy;
   final bool isAsync;
   bool isInitialized;
@@ -112,6 +122,7 @@ class _InstanceEntry<T> {
     this.builder,
     this.asyncBuilder,
     required this.permanent,
+    this.fenix = false,
     required this.isLazy,
     required this.isAsync,
     required this.isInitialized,
@@ -218,7 +229,7 @@ class AppLocator {
   void _scheduleOnReady(AppController controller) {
     try {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!controller.isDisposed && !controller.isReady) {
+        if (!controller.isDisposed && !controller.isControllerReady) {
           controller.onReady();
         }
       });
@@ -239,6 +250,7 @@ class AppLocator {
     T Function() builder, {
     String? tag,
     bool permanent = false,
+    bool fenix = false,
   }) {
     final key = _InstanceKey(T, tag);
     if (_registry.containsKey(key)) {
@@ -251,6 +263,7 @@ class AppLocator {
     _registry[key] = _InstanceEntry<T>(
       builder: builder,
       permanent: permanent,
+      fenix: fenix,
       isLazy: true,
       isAsync: false,
       isInitialized: false,
@@ -345,13 +358,17 @@ class AppLocator {
     if (instance != null) {
       final removed = (entry as _InstanceEntry<T>).removeInstance(instance);
       if (entry.allInstances.isEmpty) {
-        _registry.remove(key);
+        if (!entry.fenix) {
+          _registry.remove(key);
+        }
       }
       return removed;
     }
 
     entry.dispose();
-    _registry.remove(key);
+    if (!entry.fenix || force) {
+      _registry.remove(key);
+    }
     return true;
   }
 
@@ -432,7 +449,9 @@ class _AppBindState<T extends AppController> extends State<AppBind<T>> {
     AppLocator.instance.put<T>(_controller, tag: widget.tag, stack: true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_controller.isDisposed && !_controller.isReady) {
+      if (mounted &&
+          !_controller.isDisposed &&
+          !_controller.isControllerReady) {
         _controller.onReady();
       }
     });
@@ -451,4 +470,29 @@ class _AppBindState<T extends AppController> extends State<AppBind<T>> {
     }
     super.dispose();
   }
+}
+
+/// Interface for declaring modular dependencies.
+abstract class AppBindings {
+  /// Registers dependencies into the service locator.
+  void dependencies();
+}
+
+/// Convenience builder for functional dependency registration.
+class BindingsBuilder implements AppBindings {
+  final void Function() _builder;
+  const BindingsBuilder(this._builder);
+
+  @override
+  void dependencies() => _builder();
+
+  void call() => _builder();
+}
+
+/// Base [StatelessWidget] with convenient access to a controller registered in [AppLocator].
+abstract class AppView<T> extends StatelessWidget {
+  const AppView({super.key});
+
+  /// The registered [T] controller instance.
+  T get controller => AppLocator.instance.find<T>();
 }
