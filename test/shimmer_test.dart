@@ -410,5 +410,68 @@ void main() {
       await tester.tap(find.text('Action Button'));
       expect(tapCount, 1);
     });
+
+    testWidgets(
+        'AppShimmer preserves vertical spacing between closely stacked Text lines and coalesces BiDi lines',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text('جلسة 1', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 2),
+                Text('345/2026', style: TextStyle(fontSize: 12)),
+                Text('محمد اسماعيل', style: TextStyle(fontSize: 12)),
+                Text(''),
+              ],
+            ).shimmer(enabled: true),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppShimmer), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'AppShimmer blends semi-transparent container surfaces to 100% opaque mask eliminating text ghosting',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: const Color(0xFF1B1B1B),
+          ),
+          home: Scaffold(
+            body: Container(
+              color: const Color(0xFF1B1B1B),
+              child: Card(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'قضية تجارية كبرى 1024',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ).shimmer(enabled: true),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppShimmer), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+    });
   });
 }

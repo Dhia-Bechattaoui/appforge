@@ -443,6 +443,10 @@ class _AppShimmerState extends State<AppShimmer>
           )
         : widget.child;
 
+    final defaultSurface = scheme.surface.a < 1.0
+        ? Color.alphaBlend(scheme.surface, isDark ? Colors.black : Colors.white)
+        : scheme.surface;
+
     return AnimatedBuilder(
       animation: _controller,
       child: RepaintBoundary(child: themedChild),
@@ -451,6 +455,7 @@ class _AppShimmerState extends State<AppShimmer>
           enabled: widget.enabled,
           baseColor: base,
           highlightColor: highlight,
+          surfaceColor: defaultSurface,
           progress: _controller.value,
           direction: effectiveDir,
           textDirection: textDir,
@@ -535,32 +540,86 @@ class _SkeletonScan {
 /// * A painted surface hosting **no** content (e.g. a grey placeholder box)
 ///   becomes a bone itself, using its own shape (rounded, stadium, circle...).
 class _SkeletonCollector {
-  _SkeletonCollector(this.textDirection);
+  _SkeletonCollector(this.textDirection, this.defaultSurfaceColor);
 
   final TextDirection textDirection;
+  final Color defaultSurfaceColor;
   final Path bones = Path();
+  final Map<Color, Path> surfaceMasks = <Color, Path>{};
 
   /// Whether a scrollable viewport was encountered. Viewport scrolling does not
   /// relayout ancestors, so such geometry must be re-derived every frame.
   bool encounteredViewport = false;
 
-  _SkeletonScan scan(RenderObject node, Matrix4 transform) {
+  static Color? _surfaceColorOf(RenderBox node) {
+    if (node is RenderDecoratedBox) {
+      final decoration = node.decoration;
+      if (decoration is BoxDecoration) {
+        if (decoration.color != null && decoration.color!.a > 0) {
+          return decoration.color;
+        }
+        final gradient = decoration.gradient;
+        if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+          return gradient.colors.first;
+        }
+      }
+    }
+    if (node is RenderPhysicalShape && node.color.a > 0) {
+      return node.color;
+    }
+    if (node is RenderPhysicalModel && node.color.a > 0) {
+      return node.color;
+    }
+    return null;
+  }
+
+  Color _resolveSurfaceColor(Color? localSurface, Color? inheritedSurface) {
+    final backdrop = inheritedSurface ?? defaultSurfaceColor;
+    if (localSurface == null || localSurface.a <= 0.0) {
+      return backdrop;
+    }
+    if (localSurface.a >= 1.0) {
+      return localSurface;
+    }
+    // Blend semi-transparent container / badge surface over the backdrop so
+    // the resulting mask color is 100% opaque, perfectly matching the visual
+    // container background without letting any underlying text show through.
+    return Color.alphaBlend(localSurface, backdrop);
+  }
+
+  void _recordMask(Path local, Matrix4 transform, Color color) {
+    final opaqueColor =
+        color.a < 1.0 ? Color.alphaBlend(color, defaultSurfaceColor) : color;
+    surfaceMasks
+        .putIfAbsent(opaqueColor, Path.new)
+        .addPath(_transformed(local, transform), Offset.zero);
+  }
+
+  _SkeletonScan scan(RenderObject node, Matrix4 transform,
+      [Color? inheritedSurface]) {
+    final localSurface = node is RenderBox ? _surfaceColorOf(node) : null;
+    final surfaceColor = _resolveSurfaceColor(localSurface, inheritedSurface);
+
     if (node is RenderBox) {
       if (!node.hasSize || node.size.isEmpty) return _SkeletonScan.empty;
       if (node is RenderOffstage && node.offstage) return _SkeletonScan.empty;
 
       if (node is RenderParagraph) {
-        _emitParagraph(node, transform);
+        _emitParagraph(node, transform, surfaceColor);
         return const _SkeletonScan.content();
       }
 
       if (node is RenderImage) {
+        _recordMask(
+            Path()..addRect(Offset.zero & node.size), transform, surfaceColor);
         _emitLocal(
           Path()
-            ..addRRect(RRect.fromRectAndRadius(
-              Offset.zero & node.size,
-              const Radius.circular(8),
-            )),
+            ..addRRect(
+              RRect.fromRectAndRadius(
+                Offset.zero & node.size,
+                const Radius.circular(8),
+              ),
+            ),
           transform,
         );
         return const _SkeletonScan.content();
@@ -568,12 +627,16 @@ class _SkeletonCollector {
 
       final decoration = node is RenderDecoratedBox ? node.decoration : null;
       if (decoration is BoxDecoration && decoration.shape == BoxShape.circle) {
+        _recordMask(
+            Path()..addRect(Offset.zero & node.size), transform, surfaceColor);
         _emitLocal(
           Path()
-            ..addOval(Rect.fromCircle(
-              center: node.size.center(Offset.zero),
-              radius: node.size.shortestSide / 2,
-            )),
+            ..addOval(
+              Rect.fromCircle(
+                center: node.size.center(Offset.zero),
+                radius: node.size.shortestSide / 2,
+              ),
+            ),
           transform,
         );
         return const _SkeletonScan.content();
@@ -591,7 +654,7 @@ class _SkeletonCollector {
       if (!node.paintsChild(child)) return;
       final childTransform = transform.clone();
       node.applyPaintTransform(child, childTransform);
-      final result = scan(child, childTransform);
+      final result = scan(child, childTransform, surfaceColor);
       if (result.hasContent) {
         anyContent = true;
       } else {
@@ -617,8 +680,9 @@ class _SkeletonCollector {
     }
 
     // A painted node with nothing inside is itself a placeholder.
-    return _SkeletonScan.pending(
-        <Path>[_transformed(_shapeOf(node), transform)]);
+    return _SkeletonScan.pending(<Path>[
+      _transformed(_shapeOf(node), transform),
+    ]);
   }
 
   /// Emits the deferred placeholders of the root scan, or a full-bounds bone
@@ -634,38 +698,105 @@ class _SkeletonCollector {
     );
   }
 
-  void _emitParagraph(RenderParagraph node, Matrix4 transform) {
-    final local = Path();
+  void _emitParagraph(
+      RenderParagraph node, Matrix4 transform, Color surfaceColor) {
     final text = node.text.toPlainText();
+    if (text.trim().isEmpty) return;
+
+    final local = Path();
     final isIcon = text.runes.length == 1 &&
         (node.text.style?.fontFamily?.contains('Icon') ?? false);
 
     if (isIcon) {
-      local.addRRect(RRect.fromRectAndRadius(
-        Offset.zero & node.size,
-        Radius.circular(node.size.shortestSide / 4),
-      ));
+      final iconBounds = (Offset.zero & node.size).inflate(1.5);
+      _recordMask(Path()..addRect(iconBounds), transform, surfaceColor);
+      local.addRRect(
+        RRect.fromRectAndRadius(
+          Offset.zero & node.size,
+          Radius.circular(node.size.shortestSide / 4),
+        ),
+      );
     } else {
+      final bounds = Offset.zero & node.size;
       final boxes = node.getBoxesForSelection(
         TextSelection(baseOffset: 0, extentOffset: text.length),
       );
       if (boxes.isEmpty) {
-        local.addRRect(RRect.fromRectAndRadius(
-          Offset.zero & node.size,
-          const Radius.circular(4),
-        ));
+        _recordMask(
+            Path()..addRect(bounds.inflate(2.0)), transform, surfaceColor);
+        local.addRRect(_textLineBone(bounds));
       } else {
+        // Coalesce selection boxes that share the same visual line (e.g. BiDi
+        // Arabic + numerals or multi-span inline text) into a single line rect,
+        // while keeping wrapped multi-line boxes as distinct vertical lines.
+        final lineRects = <Rect>[];
         for (final box in boxes) {
-          local.addRRect(
-            RRect.fromRectAndRadius(
-              box.toRect().inflate(1.0),
-              const Radius.circular(4),
-            ),
-          );
+          final rect = box.toRect().intersect(bounds);
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          if (lineRects.isEmpty) {
+            lineRects.add(rect);
+          } else {
+            final last = lineRects.last;
+            final midDelta = (rect.center.dy - last.center.dy).abs();
+            final threshold =
+                (rect.height < last.height ? rect.height : last.height) * 0.5;
+            if (midDelta <= threshold) {
+              lineRects[lineRects.length - 1] = last.expandToInclude(rect);
+            } else {
+              if (node.maxLines != null && lineRects.length >= node.maxLines!) {
+                break;
+              }
+              lineRects.add(rect);
+            }
+          }
+        }
+        if (lineRects.isEmpty) {
+          _recordMask(
+              Path()..addRect(bounds.inflate(2.0)), transform, surfaceColor);
+          local.addRRect(_textLineBone(bounds));
+        } else {
+          // If the text exceeded max lines (e.g. ellipsis '...' drawn),
+          // expand the last line rect across the bounds so the ellipsis is masked.
+          if (node.didExceedMaxLines && lineRects.isNotEmpty) {
+            final last = lineRects.last;
+            lineRects[lineRects.length - 1] = last.expandToInclude(
+              Rect.fromLTWH(bounds.left, last.top, bounds.width, last.height),
+            );
+          }
+
+          for (final lineRect in lineRects) {
+            // Mask inflated by 2px to thoroughly blank out Arabic diacritics,
+            // swashes, subpixel antialiasing fringes, and dots.
+            final maskRect = lineRect.inflate(2.0);
+            _recordMask(Path()..addRect(maskRect), transform, surfaceColor);
+            local.addRRect(_textLineBone(lineRect));
+          }
         }
       }
     }
     _emitLocal(local, transform);
+  }
+
+  /// Converts a full typographic line box (which includes font ascent, descent,
+  /// and leading whitespace) into a glyph-proportioned skeleton bone centered
+  /// vertically within the line box.
+  ///
+  /// Because visible glyphs (cap-height / x-height) occupy ~62% of the line-box
+  /// height, deflating vertically preserves the natural inter-line spacing so
+  /// stacked [Text] widgets never fuse into a single solid block and never
+  /// appear oversized compared to the loaded text.
+  static RRect _textLineBone(Rect lineRect) {
+    final h = lineRect.height;
+    final boneHeight = h > 6.0 ? (h * 0.62).clamp(6.0, h) : h;
+    final vInset = (h - boneHeight) / 2.0;
+    final deflated = Rect.fromLTWH(
+      lineRect.left,
+      lineRect.top + vInset,
+      lineRect.width,
+      boneHeight,
+    );
+    final radius = Radius.circular((boneHeight * 0.35).clamp(3.0, 6.0));
+    return RRect.fromRectAndRadius(deflated, radius);
   }
 
   static bool _paintsOwnSurface(RenderBox node, bool hasChildren) {
@@ -705,10 +836,9 @@ class _SkeletonCollector {
     if (node is RenderPhysicalModel) {
       if (node.shape == BoxShape.circle) {
         return Path()
-          ..addOval(Rect.fromCircle(
-            center: rect.center,
-            radius: rect.shortestSide / 2,
-          ));
+          ..addOval(
+            Rect.fromCircle(center: rect.center, radius: rect.shortestSide / 2),
+          );
       }
       final radius = node.borderRadius;
       if (radius != null && radius != BorderRadius.zero) {
@@ -754,6 +884,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
   final bool enabled;
   final Color baseColor;
   final Color highlightColor;
+  final Color surfaceColor;
   final double progress;
   final ShimmerDirection direction;
   final TextDirection textDirection;
@@ -763,6 +894,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
     required this.enabled,
     required this.baseColor,
     required this.highlightColor,
+    required this.surfaceColor,
     required this.progress,
     required this.direction,
     required this.textDirection,
@@ -774,6 +906,7 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
       enabled: enabled,
       baseColor: baseColor,
       highlightColor: highlightColor,
+      surfaceColor: surfaceColor,
       progress: progress,
       direction: direction,
       textDirection: textDirection,
@@ -781,14 +914,12 @@ class _ShimmerRenderWidget extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderShimmer renderObject,
-  ) {
+  void updateRenderObject(BuildContext context, _RenderShimmer renderObject) {
     renderObject
       ..enabled = enabled
       ..baseColor = baseColor
       ..highlightColor = highlightColor
+      ..surfaceColor = surfaceColor
       ..progress = progress
       ..direction = direction
       ..textDirection = textDirection;
@@ -799,17 +930,20 @@ class _RenderShimmer extends RenderProxyBox {
   bool _enabled;
   Color _baseColor;
   Color _highlightColor;
+  Color _surfaceColor;
   double _progress;
   ShimmerDirection _direction;
   TextDirection _textDirection;
 
   Path? _cachedBones;
+  Map<Color, Path>? _cachedSurfaceMasks;
   bool _volatileGeometry = false;
 
   _RenderShimmer({
     required bool enabled,
     required Color baseColor,
     required Color highlightColor,
+    required Color surfaceColor,
     required double progress,
     required ShimmerDirection direction,
     required TextDirection textDirection,
@@ -817,6 +951,7 @@ class _RenderShimmer extends RenderProxyBox {
   })  : _enabled = enabled,
         _baseColor = baseColor,
         _highlightColor = highlightColor,
+        _surfaceColor = surfaceColor,
         _progress = progress,
         _direction = direction,
         _textDirection = textDirection,
@@ -824,6 +959,7 @@ class _RenderShimmer extends RenderProxyBox {
 
   void _invalidateBones() {
     _cachedBones = null;
+    _cachedSurfaceMasks = null;
   }
 
   @override
@@ -864,6 +1000,13 @@ class _RenderShimmer extends RenderProxyBox {
     markNeedsPaint();
   }
 
+  set surfaceColor(Color value) {
+    if (_surfaceColor == value) return;
+    _surfaceColor = value;
+    _invalidateBones();
+    markNeedsPaint();
+  }
+
   set progress(double value) {
     if (_progress == value) return;
     _progress = value;
@@ -895,14 +1038,15 @@ class _RenderShimmer extends RenderProxyBox {
     super.visitChildrenForSemantics(visitor);
   }
 
-  Path _deriveBones() {
-    final collector = _SkeletonCollector(_textDirection);
+  void _deriveBones() {
+    final collector = _SkeletonCollector(_textDirection, _surfaceColor);
     final transform = Matrix4.identity();
     applyPaintTransform(child!, transform);
     final root = collector.scan(child!, transform);
     collector.finish(root, size);
     _volatileGeometry = collector.encounteredViewport;
-    return collector.bones;
+    _cachedBones = collector.bones;
+    _cachedSurfaceMasks = collector.surfaceMasks;
   }
 
   @override
@@ -911,11 +1055,27 @@ class _RenderShimmer extends RenderProxyBox {
     super.paint(context, offset);
     if (!_enabled || child == null) return;
 
-    // 2. Opaque bones concealing content, swept by the shimmer gradient.
+    // 2. Derive bones and surface masks concealing underlying text/icons.
     if (_cachedBones == null || _volatileGeometry) {
-      _cachedBones = _deriveBones();
+      _deriveBones();
     }
 
+    final canvas = context.canvas;
+    canvas.save();
+    canvas.translate(offset.dx, offset.dy);
+    canvas.clipRect(Offset.zero & size);
+
+    // 3. Mask out underlying text glyphs and icon ink with their host surface color
+    if (_cachedSurfaceMasks != null) {
+      for (final entry in _cachedSurfaceMasks!.entries) {
+        final maskPaint = Paint()
+          ..color = entry.key
+          ..style = PaintingStyle.fill;
+        canvas.drawPath(entry.value, maskPaint);
+      }
+    }
+
+    // 4. Paint sleek shimmer skeleton bones swept by the gradient shader
     final paint = Paint()
       ..shader = createShimmerShader(
         bounds: Offset.zero & size,
@@ -926,10 +1086,6 @@ class _RenderShimmer extends RenderProxyBox {
       )
       ..style = PaintingStyle.fill;
 
-    final canvas = context.canvas;
-    canvas.save();
-    canvas.translate(offset.dx, offset.dy);
-    canvas.clipRect(Offset.zero & size);
     canvas.drawPath(_cachedBones!, paint);
     canvas.restore();
   }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-06
+
+### Added
+- **Typography-Adaptive Skeleton Shimmer Engine (`AppShimmer`)**:
+  - **Cap-Height Line Bone Deflation**: Skeleton line bones are centered vertically within typographic line boxes at glyph cap-height (`62%` line factor). Preserves natural inter-line whitespace so closely stacked multi-line `Text` widgets maintain visual separation without fusing into solid blocks.
+  - **Surface-Aware Text Masking (Zero Ghosting)**: Introduced host container surface color detection (`_surfaceColorOf`) supporting `BoxDecoration`, `Card`, `LinearGradient`, and `PhysicalModel`.
+  - **Recursive Opaque Alpha-Blending (`_resolveSurfaceColor`)**: Blends semi-transparent surfaces (`color.a < 1.0`, such as 12% tinted banner containers or 10% badges) over parent backdrops into 100% opaque mask paths. Completely obliterates underlying styled text glyphs and icon ink with the exact native surface hue before sweeping the gradient shader.
+  - **BiDi Multi-Span Line Coalescing**: Adjacent Arabic and numeral selection segments sharing the same horizontal baseline coalesce into unified, cohesive line rectangles.
+  - **Overflow Ellipsis Blanketing**: Added `didExceedMaxLines` detection to extend masks across the overflow region, blanking out trailing `...` ellipsis ink.
+  - **Subpixel Antialiasing & Diacritics Inset**: Added `2.0px` mask inflation to cover Arabic diacritics, dots (nuqats), and subpixel antialiasing fringes.
+
 ## [0.3.0] - 2026-11-05
 
 ### Added
