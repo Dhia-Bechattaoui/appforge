@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-06
+
+### Fixed
+- **Curved Surface & Circular Skeleton Masking (`AppShimmer`)**:
+  - **Oval Surface Mask Matching**: Fixed circular elements (`BoxDecoration(shape: BoxShape.circle)`, `ShapeDecoration(shape: CircleBorder())`, `ClipOval`, and circular `PhysicalModel`) previously recording rectangular bounding box masks (`addRect`), which caused tinted square backgrounds (e.g. primary orange or light amber) to visually bleed out around circular avatars, camera badges, and circular notification icon containers. Surface masks for circular nodes are now recorded as exact matching ovals (`addOval`), strictly confining mask ink to the circular boundary.
+  - **Rounded Icon Masking**: Enhanced icon masking to use proportional rounded rectangles (`addRRect`) matching the emitted icon bone geometry rather than sharp 90-degree rectangular bounds.
+  - **Clipping AST Geometry (`RenderClipOval` & `RenderClipRRect`)**: Extended `_shapeOf` AST analysis to extract matching oval and rounded rectangle paths for clipped subtree roots.
+
 ## [0.4.0] - 2026-11-06
 
 ### Added

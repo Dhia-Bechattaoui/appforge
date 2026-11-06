@@ -563,6 +563,15 @@ class _SkeletonCollector {
           return gradient.colors.first;
         }
       }
+      if (decoration is ShapeDecoration) {
+        if (decoration.color != null && decoration.color!.a > 0) {
+          return decoration.color;
+        }
+        final gradient = decoration.gradient;
+        if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+          return gradient.colors.first;
+        }
+      }
     }
     if (node is RenderPhysicalShape && node.color.a > 0) {
       return node.color;
@@ -610,35 +619,33 @@ class _SkeletonCollector {
       }
 
       if (node is RenderImage) {
-        _recordMask(
-            Path()..addRect(Offset.zero & node.size), transform, surfaceColor);
-        _emitLocal(
-          Path()
-            ..addRRect(
-              RRect.fromRectAndRadius(
-                Offset.zero & node.size,
-                const Radius.circular(8),
-              ),
-            ),
-          transform,
+        final imageRRect = RRect.fromRectAndRadius(
+          Offset.zero & node.size,
+          const Radius.circular(8),
         );
+        _recordMask(Path()..addRRect(imageRRect), transform, surfaceColor);
+        _emitLocal(Path()..addRRect(imageRRect), transform);
         return const _SkeletonScan.content();
       }
 
       final decoration = node is RenderDecoratedBox ? node.decoration : null;
-      if (decoration is BoxDecoration && decoration.shape == BoxShape.circle) {
-        _recordMask(
-            Path()..addRect(Offset.zero & node.size), transform, surfaceColor);
-        _emitLocal(
-          Path()
-            ..addOval(
-              Rect.fromCircle(
-                center: node.size.center(Offset.zero),
-                radius: node.size.shortestSide / 2,
-              ),
+      final isCircle = (decoration is BoxDecoration &&
+              decoration.shape == BoxShape.circle) ||
+          (decoration is ShapeDecoration &&
+              decoration.shape is CircleBorder) ||
+          (node is RenderClipOval) ||
+          (node is RenderPhysicalModel && node.shape == BoxShape.circle);
+
+      if (isCircle) {
+        final circlePath = Path()
+          ..addOval(
+            Rect.fromCircle(
+              center: node.size.center(Offset.zero),
+              radius: node.size.shortestSide / 2,
             ),
-          transform,
-        );
+          );
+        _recordMask(circlePath, transform, surfaceColor);
+        _emitLocal(circlePath, transform);
         return const _SkeletonScan.content();
       }
     }
@@ -709,7 +716,12 @@ class _SkeletonCollector {
 
     if (isIcon) {
       final iconBounds = (Offset.zero & node.size).inflate(1.5);
-      _recordMask(Path()..addRect(iconBounds), transform, surfaceColor);
+      final iconRadius = Radius.circular(iconBounds.shortestSide / 4);
+      _recordMask(
+        Path()..addRRect(RRect.fromRectAndRadius(iconBounds, iconRadius)),
+        transform,
+        surfaceColor,
+      );
       local.addRRect(
         RRect.fromRectAndRadius(
           Offset.zero & node.size,
@@ -830,6 +842,16 @@ class _SkeletonCollector {
   Path _shapeOf(RenderBox node) {
     final rect = Offset.zero & node.size;
 
+    if (node is RenderClipOval) {
+      return Path()
+        ..addOval(
+          Rect.fromCircle(center: rect.center, radius: rect.shortestSide / 2),
+        );
+    }
+    if (node is RenderClipRRect) {
+      final radius = node.borderRadius;
+      return Path()..addRRect(radius.resolve(textDirection).toRRect(rect));
+    }
     if (node is RenderPhysicalShape) {
       return node.clipper?.getClip(node.size) ?? (Path()..addRect(rect));
     }
@@ -847,6 +869,32 @@ class _SkeletonCollector {
     }
     if (node is RenderDecoratedBox) {
       final decoration = node.decoration;
+      if (decoration is BoxDecoration) {
+        if (decoration.shape == BoxShape.circle) {
+          return Path()
+            ..addOval(
+              Rect.fromCircle(
+                center: rect.center,
+                radius: rect.shortestSide / 2,
+              ),
+            );
+        }
+        if (decoration.borderRadius != null) {
+          final resolved = decoration.borderRadius!.resolve(textDirection);
+          return Path()..addRRect(resolved.toRRect(rect));
+        }
+      }
+      if (decoration is ShapeDecoration) {
+        if (decoration.shape is CircleBorder) {
+          return Path()
+            ..addOval(
+              Rect.fromCircle(
+                center: rect.center,
+                radius: rect.shortestSide / 2,
+              ),
+            );
+        }
+      }
       final isPlainRect = decoration is BoxDecoration &&
           decoration.borderRadius == null &&
           decoration.shape == BoxShape.rectangle;

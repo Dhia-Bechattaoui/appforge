@@ -473,5 +473,73 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+        'AppShimmer masks and bones circular avatars, camera badges, and notification icons with pure ovals without square corners',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                // Avatar with camera button overlay (profile screen pattern)
+                Stack(
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.orange, width: 2),
+                      ),
+                      child: const Icon(Icons.person, size: 50, color: Colors.orange),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: const BoxDecoration(
+                          color: Colors.orange,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+                // Notification circular icon badge (notification card pattern)
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.notifications, color: Colors.orange, size: 22),
+                  ),
+                ),
+                // ClipOval child
+                ClipOval(
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    color: Colors.blue,
+                  ),
+                ),
+              ],
+            ).shimmer(enabled: true),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppShimmer), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+    });
   });
 }
