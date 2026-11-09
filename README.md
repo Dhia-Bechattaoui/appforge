@@ -14,7 +14,8 @@
   <img src="https://img.shields.io/badge/dart-%3E%3D3.0.0-blue?style=flat-square" alt="Dart 3">
   <img src="https://img.shields.io/badge/flutter-%3E%3D3.10.0-02569B?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/tests-201%20passing-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-206%20passing-brightgreen?style=flat-square" alt="Tests">
+  <a href="https://github.com/sponsors/Dhia-Bechattaoui"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=github-sponsors" alt="Sponsor on GitHub"></a>
 </p>
 
 <p align="center">
@@ -224,6 +225,19 @@ dart run appforge:clean --json
 - [llms.txt](llms.txt): Machine-readable LLM context manifest.
 - [SPECIFICATION.md](SPECIFICATION.md): Framework technical architecture.
 - [CHANGELOG.md](CHANGELOG.md): Semantic version history and release notes.
+
+---
+
+## ❤️ Support & Sponsor
+
+Developing and maintaining **AppForge** as an all-in-one, zero-dependency, crash-immune micro-framework requires dedicated full-time engineering, continuous benchmarking, and thorough documentation.
+
+If AppForge makes your Flutter development faster, cleaner, or saves your projects from dozens of third-party package dependencies, please consider sponsoring:
+
+- **GitHub Sponsors**: [github.com/sponsors/Dhia-Bechattaoui](https://github.com/sponsors/Dhia-Bechattaoui)
+- **Star on GitHub**: Give the repository a ⭐ on [GitHub](https://github.com/Dhia-Bechattaoui/appforge) to help it reach more Flutter developers.
+
+Your sponsorship directly supports ongoing development, bug fixes, BiDi engine optimizations, and new micro-framework capabilities.
 
 ---
 
