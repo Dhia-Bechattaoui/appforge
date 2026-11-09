@@ -6,6 +6,35 @@ repository: https://github.com/Dhia-Bechattaoui/appforge
 issue_tracker: https://github.com/Dhia-Bechattaoui/appforge/issues
 funding:
   - https://github.com/sponsors/Dhia-Bechattaoui
+  - https://ko-fi.com/I5L22ACCSH
+
+topics:
+  - state-management
+  - navigation
+  - localization
+  - responsive
+  - storage
+
+screenshots:
+  - description: 'AppForge Zero-Dependency Framework Overview'
+    path: doc/appforge_banner.jpg
+  - description: 'Typography-Adaptive Skeleton Shimmer Engine'
+    path: doc/shimmer.gif
+  - description: 'Context-Free Navigation, Dialogs and Overlays'
+    path: doc/navigation.gif
+  - description: 'World-Class BiDi and Arabic Localization Engine'
+    path: doc/localization.gif
+  - description: 'Micro-Reactive State Management and Discrete Machines'
+    path: doc/state.gif
+  - description: 'Smart Adaptive Theming and Responsive Scaling'
+    path: doc/theme_responsive.gif
+
+platforms:
+  android:
+  ios:
+  macos:
+  linux:
+  windows:
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
