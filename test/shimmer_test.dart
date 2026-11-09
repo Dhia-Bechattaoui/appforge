@@ -493,7 +493,8 @@ void main() {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.orange, width: 2),
                       ),
-                      child: const Icon(Icons.person, size: 50, color: Colors.orange),
+                      child: const Icon(Icons.person,
+                          size: 50, color: Colors.orange),
                     ),
                     Positioned(
                       bottom: 0,
@@ -505,7 +506,8 @@ void main() {
                           color: Colors.orange,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                        child: const Icon(Icons.camera_alt,
+                            size: 16, color: Colors.white),
                       ),
                     ),
                   ],
@@ -519,7 +521,8 @@ void main() {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                    child: Icon(Icons.notifications, color: Colors.orange, size: 22),
+                    child: Icon(Icons.notifications,
+                        color: Colors.orange, size: 22),
                   ),
                 ),
                 // ClipOval child
@@ -539,6 +542,32 @@ void main() {
       expect(find.byType(AppShimmer), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'AppShimmer properly masks Arabic text with sub-baseline dots and diacritics',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: const Text(
+                'تعديل الملف الشخصي',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ).shimmer(enabled: true),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppShimmer), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
       expect(tester.takeException(), isNull);
     });
   });

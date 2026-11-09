@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-09
+
+### Fixed
+- **Arabic Sub-Baseline Descender & Nuqat Masking (`AppShimmer`)**:
+  - **Sub-Baseline Nuqat Coverage**: Fixed terminal Arabic characters with sub-baseline dots (such as Yāʼ *نقطتي الياء `ي`*, Jīm *`ج`*, and Kasrah diacritics *`ـِ`*) previously leaking out below the skeleton mask because Arabic calligraphic descenders extend 4–8px below standard typographic selection line boxes.
+  - **Adaptive Vertical Inflation**: Replaced rigid `2.0px` uniform inflation with script-aware padding: when Arabic text is detected, `maskRect` applies an adaptive bottom margin (`lineRect.height * 0.35`, clamped to 6.0–10.0px) and `4.0px` top margin, completely blanking out all upper diacritics (*الشدة، الفتحة، الضمة*) and lower dots without altering line-bone positioning.
+
 ## [0.4.1] - 2026-11-06
 
 ### Fixed

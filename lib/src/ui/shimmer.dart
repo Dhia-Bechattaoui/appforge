@@ -631,8 +631,7 @@ class _SkeletonCollector {
       final decoration = node is RenderDecoratedBox ? node.decoration : null;
       final isCircle = (decoration is BoxDecoration &&
               decoration.shape == BoxShape.circle) ||
-          (decoration is ShapeDecoration &&
-              decoration.shape is CircleBorder) ||
+          (decoration is ShapeDecoration && decoration.shape is CircleBorder) ||
           (node is RenderClipOval) ||
           (node is RenderPhysicalModel && node.shape == BoxShape.circle);
 
@@ -733,9 +732,18 @@ class _SkeletonCollector {
       final boxes = node.getBoxesForSelection(
         TextSelection(baseOffset: 0, extentOffset: text.length),
       );
+      final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+      final fallbackBottomMargin =
+          isArabic ? (bounds.height * 0.35).clamp(6.0, 10.0) : 2.0;
+      final fallbackTopMargin = isArabic ? 4.0 : 2.0;
       if (boxes.isEmpty) {
-        _recordMask(
-            Path()..addRect(bounds.inflate(2.0)), transform, surfaceColor);
+        final maskRect = Rect.fromLTRB(
+          bounds.left - 2.0,
+          bounds.top - fallbackTopMargin,
+          bounds.right + 2.0,
+          bounds.bottom + fallbackBottomMargin,
+        );
+        _recordMask(Path()..addRect(maskRect), transform, surfaceColor);
         local.addRRect(_textLineBone(bounds));
       } else {
         // Coalesce selection boxes that share the same visual line (e.g. BiDi
@@ -763,8 +771,13 @@ class _SkeletonCollector {
           }
         }
         if (lineRects.isEmpty) {
-          _recordMask(
-              Path()..addRect(bounds.inflate(2.0)), transform, surfaceColor);
+          final maskRect = Rect.fromLTRB(
+            bounds.left - 2.0,
+            bounds.top - fallbackTopMargin,
+            bounds.right + 2.0,
+            bounds.bottom + fallbackBottomMargin,
+          );
+          _recordMask(Path()..addRect(maskRect), transform, surfaceColor);
           local.addRRect(_textLineBone(bounds));
         } else {
           // If the text exceeded max lines (e.g. ellipsis '...' drawn),
@@ -777,9 +790,18 @@ class _SkeletonCollector {
           }
 
           for (final lineRect in lineRects) {
-            // Mask inflated by 2px to thoroughly blank out Arabic diacritics,
-            // swashes, subpixel antialiasing fringes, and dots.
-            final maskRect = lineRect.inflate(2.0);
+            // Mask inflated with extended bottom/top margins for Arabic script to
+            // thoroughly blank out sub-baseline dots (e.g. yaa 'ي', jeem 'ج'),
+            // diacritics (kasra 'ـِ'), and upper accents (shadda/fat-ha).
+            final bottomMargin =
+                isArabic ? (lineRect.height * 0.35).clamp(6.0, 10.0) : 2.0;
+            final topMargin = isArabic ? 4.0 : 2.0;
+            final maskRect = Rect.fromLTRB(
+              lineRect.left - 2.0,
+              lineRect.top - topMargin,
+              lineRect.right + 2.0,
+              lineRect.bottom + bottomMargin,
+            );
             _recordMask(Path()..addRect(maskRect), transform, surfaceColor);
             local.addRRect(_textLineBone(lineRect));
           }
