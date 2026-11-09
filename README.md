@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/tests-206%20passing-brightgreen?style=flat-square" alt="Tests">
   <a href="https://github.com/sponsors/Dhia-Bechattaoui"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=github-sponsors" alt="Sponsor on GitHub"></a>
+  <a href="https://ko-fi.com/dhia_bechattaoui"><img src="https://img.shields.io/badge/Support_on-Ko--fi-FF5E5B?style=flat-square&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
 
 <p align="center">
@@ -234,6 +235,7 @@ Developing and maintaining **AppForge** as an all-in-one, zero-dependency, crash
 
 If AppForge makes your Flutter development faster, cleaner, or saves your projects from dozens of third-party package dependencies, please consider sponsoring:
 
+- **Ko-fi**: [ko-fi.com/dhia_bechattaoui](https://ko-fi.com/dhia_bechattaoui) — Monthly memberships, 1-on-1 architecture audits, and starter kits.
 - **GitHub Sponsors**: [github.com/sponsors/Dhia-Bechattaoui](https://github.com/sponsors/Dhia-Bechattaoui)
 - **Star on GitHub**: Give the repository a ⭐ on [GitHub](https://github.com/Dhia-Bechattaoui/appforge) to help it reach more Flutter developers.
 
