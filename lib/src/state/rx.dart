@@ -330,6 +330,19 @@ Worker ever<T>(ValueListenable<T> listener, void Function(T val) callback) {
   return RxSubscription(() => listener.removeListener(handler));
 }
 
+/// Calls [callback] only the first time [listener] changes, then auto-cancels.
+Worker once<T>(ValueListenable<T> listener, void Function(T val) callback) {
+  late final RxSubscription sub;
+  void handler() {
+    sub.cancel();
+    callback(listener.value);
+  }
+
+  listener.addListener(handler);
+  sub = RxSubscription(() => listener.removeListener(handler));
+  return sub;
+}
+
 /// Calls [callback] every time any of the [listeners] change.
 Worker everAll(
     List<Listenable> listeners, void Function(dynamic val) callback) {

@@ -24,6 +24,7 @@ export 'src/localization/translations.dart';
 export 'src/localization/tr_extension.dart';
 
 // State Management & Service Locator
+export 'src/state/app_builder.dart';
 export 'src/state/locator.dart';
 export 'src/state/rx.dart';
 export 'src/state/ui_state.dart';

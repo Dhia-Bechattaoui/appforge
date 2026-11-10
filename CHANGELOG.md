@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-10
+
+### Added
+- **Built-In Manual State Rebuilds (`AppBuilder<T>` & `AppController.update`)**:
+  - Added [`AppBuilder<T>`](lib/src/state/app_builder.dart) with `init`, `create`, `tag`, granular `id` filtering, `global: false` local controllers, `autoRemove`, `initState`/`dispose` hooks, and automatic post-frame deferral when `update()` is invoked mid-build (`SchedulerPhase.persistentCallbacks`).
+  - Implemented [`AppController.update([List<Object>? ids, bool condition = true])`](lib/src/state/locator.dart) alongside `addListener`, `removeListener`, `addIdListener`, and `removeIdListener` with error-isolated snapshot dispatch and automatic listener cleanup in `onClose()`.
+- **Safe Service Locator Helpers (`App.putIfAbsent` & `App.findOrNull`)**:
+  - Added `App.putIfAbsent<T>(builder, ...)` to avoid instantiating redundant objects when a dependency is already registered.
+  - Added `App.findOrNull<T>()` to safely resolve optional dependencies without throwing `StateError`.
+- **Single-Shot Reactive Worker (`once`)**:
+  - Added `once<T>(listener, callback)` in [`rx.dart`](lib/src/state/rx.dart) alongside `ever`, `everAll`, `debounce`, and `interval` to invoke a side-effect once on the first change and auto-cancel.
+
+### Changed
+- **Idempotent Dependency Registration (`App.put` / `AppLocator.put`)**:
+  - `App.put<T>` now defaults to `replace: false` (preserving existing registered singletons and materializing pending `App.lazyPut` factories instead of overwriting populated controllers). Pass `replace: true` to force disposal and replacement.
+  - Added `replace: false` protection to `App.lazyPut` and `App.putAsync` so `permanent: true` registrations are preserved unless explicitly replaced.
+
 ## [0.4.2] - 2026-11-09
 
 ### Fixed

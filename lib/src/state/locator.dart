@@ -4,13 +4,16 @@ import 'rx.dart';
 
 /// Base controller class with deterministic lifecycle management.
 ///
-/// Ensures route-bound auto-disposal to eliminate zombie listeners,
-/// dangling streams, and memory leaks.
+/// Supports both fine-grained reactive [Rx] + [Watch] observables and lightweight
+/// manual rebuilds via [update] + [AppBuilder], with automatic listener cleanup
+/// and route-bound disposal.
 abstract class AppController {
   bool _isInitialized = false;
   bool _isControllerReady = false;
   bool _isDisposed = false;
   final List<RxSubscription> _autoSubscriptions = [];
+  final Set<VoidCallback> _updateListeners = <VoidCallback>{};
+  final Map<Object, Set<VoidCallback>> _idUpdateListeners = {};
 
   /// Whether [onInit] has been executed.
   bool get isInitialized => _isInitialized;
@@ -23,6 +26,16 @@ abstract class AppController {
 
   /// Whether this controller has been disposed/closed.
   bool get isClosed => _isDisposed;
+
+  /// Number of currently active manual update listeners (exposed for leak testing).
+  @visibleForTesting
+  int get updateListenerCount {
+    var total = _updateListeners.length;
+    for (final set in _idUpdateListeners.values) {
+      total += set.length;
+    }
+    return total;
+  }
 
   /// Called immediately when the controller is registered or instantiated.
   @mustCallSuper
@@ -67,12 +80,78 @@ abstract class AppController {
   /// Called when the app becomes hidden (Flutter 3.13+).
   void onHidden() {}
 
-  /// Manually triggers rebuilds or notifies listeners for specific IDs.
-  void update([List<Object>? ids]) {}
+  /// Registers an unscoped [listener] notified when [update] is called.
+  void addListener(VoidCallback listener) {
+    if (_isDisposed) return;
+    _updateListeners.add(listener);
+  }
+
+  /// Unregisters a previously registered unscoped [listener].
+  void removeListener(VoidCallback listener) {
+    _updateListeners.remove(listener);
+  }
+
+  /// Registers an [id]-scoped [listener] notified when [update] targets [id]
+  /// or performs an unscoped refresh.
+  void addIdListener(Object id, VoidCallback listener) {
+    if (_isDisposed) return;
+    _idUpdateListeners.putIfAbsent(id, () => <VoidCallback>{}).add(listener);
+  }
+
+  /// Unregisters a previously registered [id]-scoped [listener].
+  void removeIdListener(Object id, VoidCallback listener) {
+    final listeners = _idUpdateListeners[id];
+    if (listeners == null) return;
+    listeners.remove(listener);
+    if (listeners.isEmpty) {
+      _idUpdateListeners.remove(id);
+    }
+  }
+
+  /// Notifies [AppBuilder] listeners to rebuild UI cleanly.
+  ///
+  /// - When [ids] is `null` or empty, all listeners (unscoped and ID-scoped) rebuild.
+  /// - When [ids] is provided, only listeners registered for those matching IDs rebuild.
+  /// - When [condition] is `false`, nothing is notified.
+  void update([List<Object>? ids, bool condition = true]) {
+    if (!condition || _isDisposed) return;
+
+    final targets = <VoidCallback>{};
+    if (ids == null || ids.isEmpty) {
+      targets.addAll(_updateListeners);
+      for (final group in _idUpdateListeners.values) {
+        targets.addAll(group);
+      }
+    } else {
+      for (final id in ids) {
+        final group = _idUpdateListeners[id];
+        if (group != null) {
+          targets.addAll(group);
+        }
+      }
+    }
+
+    for (final listener in List<VoidCallback>.of(targets)) {
+      try {
+        listener();
+      } catch (error, stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'appforge',
+            context: ErrorDescription(
+              'while notifying AppController.update listener on $runtimeType',
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   /// Called when the route or widget binding is removed from the navigation stack.
   ///
-  /// Cleans up all auto-subscriptions and frees resources.
+  /// Cleans up all auto-subscriptions, manual update listeners, and frees resources.
   @mustCallSuper
   void onClose() {
     _isDisposed = true;
@@ -80,6 +159,8 @@ abstract class AppController {
       sub.cancel();
     }
     _autoSubscriptions.clear();
+    _updateListeners.clear();
+    _idUpdateListeners.clear();
   }
 }
 
@@ -174,9 +255,13 @@ class AppLocator {
 
   /// Registers an existing dependency instance.
   ///
-  /// If [dependency] is an [AppController], its [AppController.onInit] lifecycle
-  /// hook is invoked immediately and [AppController.onReady] is scheduled post-frame.
+  /// By default (`replace: false`), `put` is idempotent: if [T] (with matching
+  /// [tag]) is already registered, the existing instance is returned intact
+  /// (materializing a pending `lazyPut` factory if needed) without wiping state
+  /// or invoking `onInit` on the redundant [dependency].
   ///
+  /// Set [replace] to `true` to dispose any non-permanent registration (or replace
+  /// explicitly) with [dependency].
   /// Set [stack] to `true` to push multiple instances of the same type without
   /// disposing earlier instances (used by [AppBind] for route-scoped stacking).
   ///
@@ -189,6 +274,7 @@ class AppLocator {
     String? tag,
     bool permanent = false,
     bool stack = false,
+    bool replace = false,
   }) {
     final key = _InstanceKey(T, tag);
 
@@ -201,10 +287,15 @@ class AppLocator {
           _scheduleOnReady(dependency);
         }
         return dependency;
-      } else {
-        if (!existing.permanent) {
-          existing.dispose();
+      } else if (!replace) {
+        if (existing.isLazy && !existing.isInitialized) {
+          return find<T>(tag: tag);
         }
+        if (existing.instance != null) {
+          return existing.instance as T;
+        }
+      } else {
+        existing.dispose();
       }
     }
 
@@ -224,6 +315,26 @@ class AppLocator {
     }
 
     return dependency;
+  }
+
+  /// Registers [builder] only if [T] (with optional [tag]) is not already
+  /// registered, avoiding unnecessary object construction when already present.
+  T putIfAbsent<T>(
+    T Function() builder, {
+    String? tag,
+    bool permanent = false,
+  }) {
+    final key = _InstanceKey(T, tag);
+    final existing = _registry[key];
+    if (existing != null) {
+      if (existing.isLazy && !existing.isInitialized) {
+        return find<T>(tag: tag);
+      }
+      if (existing.instance != null) {
+        return existing.instance as T;
+      }
+    }
+    return put<T>(builder(), tag: tag, permanent: permanent);
   }
 
   void _scheduleOnReady(AppController controller) {
@@ -251,11 +362,15 @@ class AppLocator {
     String? tag,
     bool permanent = false,
     bool fenix = false,
+    bool replace = false,
   }) {
     final key = _InstanceKey(T, tag);
     if (_registry.containsKey(key)) {
       final existing = _registry[key]!;
-      if (!existing.permanent) {
+      if (!replace && existing.permanent) {
+        return;
+      }
+      if (replace || !existing.permanent) {
         existing.dispose();
       }
     }
@@ -280,15 +395,27 @@ class AppLocator {
     Future<T> Function() builder, {
     String? tag,
     bool permanent = false,
+    bool replace = false,
   }) async {
     final key = _InstanceKey(T, tag);
+    if (!replace && _registry.containsKey(key)) {
+      final existing = _registry[key]!;
+      if (existing.isLazy && !existing.isInitialized) {
+        return find<T>(tag: tag);
+      }
+      if (existing.instance != null) {
+        return existing.instance as T;
+      }
+    }
+
     final dependency = await builder();
 
     if (_registry.containsKey(key)) {
       final existing = _registry[key]!;
-      if (!existing.permanent) {
-        existing.dispose();
+      if (!replace && existing.permanent) {
+        return existing.instance as T;
       }
+      existing.dispose();
     }
 
     final entry = _InstanceEntry<T>(
@@ -318,15 +445,23 @@ class AppLocator {
   /// final auth = App.find<AuthController>();
   /// ```
   T find<T>({String? tag}) {
-    final key = _InstanceKey(T, tag);
-    final entry = _registry[key];
-
-    if (entry == null) {
+    final found = findOrNull<T>(tag: tag);
+    if (found == null) {
+      final key = _InstanceKey(T, tag);
       throw StateError(
         'AppForge: Dependency "$key" was not found in the service locator.\n'
         'Ensure you registered it first via "App.put($T())" or "App.lazyPut(() => $T())".',
       );
     }
+    return found;
+  }
+
+  /// Finds and retrieves a registered dependency of type [T], or `null` if not registered.
+  T? findOrNull<T>({String? tag}) {
+    final key = _InstanceKey(T, tag);
+    final entry = _registry[key];
+
+    if (entry == null) return null;
 
     if (entry.isLazy && !entry.isInitialized) {
       final created = entry.builder!();
@@ -338,7 +473,7 @@ class AppLocator {
       }
     }
 
-    return entry.instance as T;
+    return entry.instance as T?;
   }
 
   /// Removes and disposes a registered dependency of type [T].

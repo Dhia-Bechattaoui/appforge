@@ -182,19 +182,39 @@ class App {
 
   /// Registers an instance [dependency] in the service locator.
   ///
-  /// If [dependency] is an [AppController], its [AppController.onInit] lifecycle
-  /// hook runs immediately.
+  /// By default (`replace: false`), if [T] is already registered, returns the
+  /// existing instance without overwriting it. Pass `replace: true` to force
+  /// replacement.
+  ///
+  /// If [dependency] is an [AppController] and is newly registered, its
+  /// [AppController.onInit] lifecycle hook runs immediately.
   static T put<T>(
     T dependency, {
     String? tag,
     bool permanent = false,
     bool stack = false,
+    bool replace = false,
   }) {
     return AppLocator.instance.put<T>(
       dependency,
       tag: tag,
       permanent: permanent,
       stack: stack,
+      replace: replace,
+    );
+  }
+
+  /// Registers the instance returned by [builder] only if [T] is not already
+  /// registered in the service locator.
+  static T putIfAbsent<T>(
+    T Function() builder, {
+    String? tag,
+    bool permanent = false,
+  }) {
+    return AppLocator.instance.putIfAbsent<T>(
+      builder,
+      tag: tag,
+      permanent: permanent,
     );
   }
 
@@ -204,12 +224,14 @@ class App {
     String? tag,
     bool permanent = false,
     bool fenix = false,
+    bool replace = false,
   }) {
     AppLocator.instance.lazyPut<T>(
       builder,
       tag: tag,
       permanent: permanent,
       fenix: fenix,
+      replace: replace,
     );
   }
 
@@ -218,17 +240,24 @@ class App {
     Future<T> Function() builder, {
     String? tag,
     bool permanent = false,
+    bool replace = false,
   }) {
     return AppLocator.instance.putAsync<T>(
       builder,
       tag: tag,
       permanent: permanent,
+      replace: replace,
     );
   }
 
   /// Retrieves a registered dependency of type [T].
   static T find<T>({String? tag}) {
     return AppLocator.instance.find<T>(tag: tag);
+  }
+
+  /// Retrieves a registered dependency of type [T], or `null` if not registered.
+  static T? findOrNull<T>({String? tag}) {
+    return AppLocator.instance.findOrNull<T>(tag: tag);
   }
 
   /// Removes and disposes a registered dependency of type [T].

@@ -630,5 +630,188 @@ void main() {
       expect(App.find<TestCounterController>(), same(c1));
       expect(find.text('Level 1: count=0'), findsOneWidget);
     });
+
+    test('App.put is idempotent by default and supports replace: true', () {
+      final first = TestCounterController();
+      first.increment();
+      final second = TestCounterController();
+
+      expect(App.put(first), same(first));
+      expect(App.put(second), same(first));
+      expect(second.isInitialized, isFalse);
+      expect(App.find<TestCounterController>().count.value, 1);
+
+      expect(App.put(second, replace: true), same(second));
+      expect(first.isDisposed, isTrue);
+      expect(second.isInitialized, isTrue);
+      expect(App.find<TestCounterController>(), same(second));
+    });
+
+    test('App.put materializes pending lazyPut instead of replacing it', () {
+      var factoryCalls = 0;
+      App.lazyPut<TestAuthService>(() {
+        factoryCalls++;
+        return TestAuthService(true);
+      });
+
+      final resolved = App.put(TestAuthService(false));
+      expect(factoryCalls, 1);
+      expect(resolved.isLoggedIn, isTrue);
+      expect(App.find<TestAuthService>().isLoggedIn, isTrue);
+    });
+
+    test('App.putIfAbsent and App.findOrNull avoid unnecessary construction',
+        () {
+      expect(App.findOrNull<TestAuthService>(), isNull);
+
+      var builderCalls = 0;
+      final first = App.putIfAbsent<TestAuthService>(() {
+        builderCalls++;
+        return TestAuthService(true);
+      });
+      final second = App.putIfAbsent<TestAuthService>(() {
+        builderCalls++;
+        return TestAuthService(false);
+      });
+
+      expect(builderCalls, 1);
+      expect(identical(first, second), isTrue);
+      expect(App.findOrNull<TestAuthService>(), same(first));
+    });
+
+    test('once worker fires strictly once and auto-cancels', () {
+      final rx = 0.obs;
+      var calls = 0;
+      final sub = once<int>(rx, (_) => calls++);
+
+      rx.value = 1;
+      rx.value = 2;
+      rx.value = 3;
+
+      expect(calls, 1);
+      expect(sub.isCancelled, isTrue);
+      expect(rx.listenerCount, 0);
+    });
+
+    testWidgets(
+        'AppBuilder + AppController.update supports global & ID-scoped rebuilds safely',
+        (tester) async {
+      final controller = App.put(TestCounterController());
+      var globalBuilds = 0;
+      var headerBuilds = 0;
+      var footerBuilds = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Column(
+            children: [
+              AppBuilder<TestCounterController>(
+                builder: (c) {
+                  globalBuilds++;
+                  return Text('global:${c.count.value}');
+                },
+              ),
+              AppBuilder<TestCounterController>(
+                id: 'header',
+                builder: (c) {
+                  headerBuilds++;
+                  return Text('header:${c.count.value}');
+                },
+              ),
+              AppBuilder<TestCounterController>(
+                id: 'footer',
+                builder: (c) {
+                  footerBuilds++;
+                  return Text('footer:${c.count.value}');
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(globalBuilds, 1);
+      expect(headerBuilds, 1);
+      expect(footerBuilds, 1);
+      expect(controller.updateListenerCount, 3);
+
+      // Update with condition == false -> no rebuilds
+      controller.count.value = 1;
+      controller.update(['header'], false);
+      await tester.pump();
+      expect(headerBuilds, 1);
+
+      // Granular ID update -> only 'header' rebuilds
+      controller.update(['header']);
+      await tester.pump();
+      expect(globalBuilds, 1);
+      expect(headerBuilds, 2);
+      expect(footerBuilds, 1);
+      expect(find.text('header:1'), findsOneWidget);
+
+      // Unscoped update() -> all AppBuilder widgets rebuild
+      controller.count.value = 2;
+      controller.update();
+      await tester.pump();
+      expect(globalBuilds, 2);
+      expect(headerBuilds, 3);
+      expect(footerBuilds, 2);
+      expect(find.text('global:2'), findsOneWidget);
+      expect(find.text('footer:2'), findsOneWidget);
+
+      // Unmount -> all update listeners cleaned up
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(controller.updateListenerCount, 0);
+    });
+
+    testWidgets(
+        'AppBuilder defers update() mid-build and supports global: false & autoRemove',
+        (tester) async {
+      var localControllerDisposed = false;
+      TestCounterController? localCtrl;
+      var midBuildUpdated = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Column(
+            children: [
+              AppBuilder<TestCounterController>(
+                global: false,
+                create: () {
+                  localCtrl = TestCounterController();
+                  return localCtrl!;
+                },
+                dispose: (_) => localControllerDisposed = true,
+                builder: (c) => Text('local:${c.count.value}'),
+              ),
+              AppBuilder<TestCounterController>(
+                init: TestCounterController(),
+                autoRemove: true,
+                builder: (c) => Builder(
+                  builder: (_) {
+                    if (!midBuildUpdated) {
+                      midBuildUpdated = true;
+                      c.count.value = 5;
+                      c.update(); // mid-build update must defer cleanly
+                    }
+                    return Text('auto:${c.count.value}');
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(find.text('auto:5'), findsOneWidget);
+      expect(App.isRegistered<TestCounterController>(), isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(localControllerDisposed, isTrue);
+      expect(localCtrl!.isDisposed, isTrue);
+      expect(App.isRegistered<TestCounterController>(), isFalse);
+    });
   });
 }
