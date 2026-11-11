@@ -1,4 +1,4 @@
-import 'dart:io';
+import '../platform/io_shim.dart';
 import 'revert_manager.dart';
 
 /// Zero-dependency orphan Dart file auditor.

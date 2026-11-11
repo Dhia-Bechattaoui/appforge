@@ -316,5 +316,38 @@ void main() {
       expect(find.text('NetworkErrorDialog'), findsNothing);
       expect(find.text('HomePage'), findsOneWidget);
     });
+
+    test(
+        'recordNavigationForTesting captures controller navigation calls in pure unit tests',
+        () async {
+      App.resetForTesting();
+      App.recordNavigationForTesting();
+
+      await App.to(const Scaffold(body: Text('Details')),
+          arguments: 123, routeName: '/details');
+      await App.offNamed('/home', parameters: {'tab': 'feed'});
+      await App.offAll(const Scaffold(body: Text('Login')));
+      App.back('done');
+
+      final records = App.recordedNavigations;
+      expect(records, hasLength(4));
+      expect(records[0].action, 'to');
+      expect(records[0].pageType, Scaffold);
+      expect(records[0].routeName, '/details');
+      expect(records[0].arguments, 123);
+
+      expect(records[1].action, 'offNamed');
+      expect(records[1].routeName, '/home');
+      expect(records[1].parameters, {'tab': 'feed'});
+      expect(App.parameters, {'tab': 'feed'});
+
+      expect(records[2].action, 'offAll');
+      expect(records[2].pageType, Scaffold);
+
+      expect(records[3].action, 'back');
+      expect(records[3].result, 'done');
+
+      App.resetForTesting();
+    });
   });
 }

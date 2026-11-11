@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-11
+
+### Added
+- **Flutter Web Platform Support (`web:`)**:
+  - Enabled `web:` in `pubspec.yaml` (bumping SDK constraint to `>=3.3.0 <4.0.0` / Flutter `>=3.19.0` for `dart:js_interop`).
+  - Added conditional platform backends (`dart:io` vs `dart:js_interop`) for [`AppStorage`](lib/src/storage/storage.dart) (`window.localStorage` with `AppStorageCodec` Base64 support), [`AppConnectivity`](lib/src/utils/connectivity.dart) (`window.navigator.onLine`), [`AppEnv`](lib/src/config/env.dart) (`AssetBundle` `.env` loading), and [`io_shim.dart`](lib/src/platform/io_shim.dart) so `package:appforge/appforge.dart` compiles and runs natively on Flutter Web with zero external dependencies.
+- **First-Class Testing & Dependency Override Helpers (`App.override`, `AppTestScope`, `App.resetForTesting`)**:
+  - Added [`AppLocator.override<T>`](lib/src/state/locator.dart), `clearOverride<T>`, `clearOverrides`, [`AppOverride<T>`](lib/src/state/locator.dart), and [`AppTestScope`](lib/src/state/locator.dart) (plus `App.override`, `App.clearOverride`, `App.clearOverrides`) so tests can cleanly swap services/controllers without later `put`/`lazyPut` calls overwriting fakes.
+  - Added [`App.resetForTesting`](lib/src/core/app.dart) and `reset()` helpers on [`AppLocalization`](lib/src/localization/translations.dart) and [`AppOverlay`](lib/src/navigation/overlays.dart) for one-line teardown across all framework singletons.
+  - Added [`AppNavigationRecord`](lib/src/navigation/navigator.dart), `App.recordNavigationForTesting()`, and `App.recordedNavigations` so unit tests can assert context-free navigation calls (`App.to`, `App.off`, `App.offAll`, `App.toNamed`, `App.back`) without pumping a widget tree.
+- **Storage Hardening, Encryption Hook & Error Observability (`AppStorage`)**:
+  - Added [`AppStorageCodec`](lib/src/storage/storage.dart) (`encode`/`decode` bytes) to `AppStorage.init` and `App.initStorage` so teams can plug in application-level encryption at rest without adding external dependencies.
+  - Added `pathResolver`, `onError`, `throwOnCorrupt`, `allowTempFallback`, and `lastError` / `lastErrorStackTrace` to `AppStorage` so read, recovery, and migration failures are never silently swallowed.
+  - Added native desktop directory resolution (`Application Support` on macOS, `APPDATA`/`LOCALAPPDATA` on Windows, `XDG_DATA_HOME`/`.local/share` on Linux) and sandbox verification on iOS/Android, throwing `StateError` instead of silently falling back to `Directory.systemTemp` when `allowTempFallback` is `false`.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

@@ -18,9 +18,8 @@ This repository contains the source code for AppForge, an all-in-one Flutter mic
    - Guard against `"Looking up a deactivated widget's ancestor"` errors.
 4. **Specification Alignment**:
    - Always refer to `SPECIFICATION.md` for architecture decisions, naming, and module structure.
-5. **Platform Focus (Android & iOS)**:
-   - Primary focus is strictly mobile (Android and iOS).
-   - Prioritize mobile-specific behaviors: system back gesture/button handling, Safe Area/notch/dynamic island insets, touch responsiveness, and virtual keyboard adjustments. Web and desktop considerations are out of scope for now.
+5. **Cross-Platform Focus (Android, iOS, Desktop & Web)**:
+   - Mobile (Android and iOS) remains the primary UX target (system back gestures, Safe Area/notch/dynamic island insets, touch responsiveness, virtual keyboard adjustments), while all runtime modules must remain Flutter Web and Desktop compatible via conditional imports (`dart.library.io` vs `dart.library.js_interop`) with zero external packages.
 
 ---
 

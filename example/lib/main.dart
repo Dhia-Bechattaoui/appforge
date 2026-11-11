@@ -7,11 +7,29 @@ import 'controllers/state_lab_controller.dart';
 import 'controllers/lifecycle_lab_controller.dart';
 import 'screens/home_screen.dart';
 
+/// Example byte-level codec demonstrating optional encryption at rest via
+/// [AppStorageCodec] without adding external dependencies.
+class _ExampleStorageCodec extends AppStorageCodec {
+  const _ExampleStorageCodec();
+
+  @override
+  List<int> encode(List<int> bytes) => <int>[for (final b in bytes) b ^ 0x5A];
+
+  @override
+  List<int> decode(List<int> bytes) => <int>[for (final b in bytes) b ^ 0x5A];
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize zero-dependency AppStorage engine (loads disk cache into 0ms synchronous RAM)
-  await App.initStorage();
+  // Initialize zero-dependency AppStorage engine with optional encryption codec
+  // and observable error handler (no silent catch blocks or temp fallback).
+  await App.initStorage(
+    codec: const _ExampleStorageCodec(),
+    onError: (error, stackTrace, context) {
+      debugPrint('[AppForge Storage] $context: $error');
+    },
+  );
 
   // Load zero-dependency Environment Configuration from .env file
   await App.loadEnv(fileName: '.env', isOptional: true);

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart'
@@ -16,6 +15,7 @@ import '../localization/translations.dart';
 import '../navigation/navigator.dart';
 import '../navigation/overlays.dart';
 import '../navigation/transitions.dart';
+import '../platform/io_shim.dart';
 import '../responsive/responsive_scaler.dart';
 import '../state/locator.dart';
 import '../state/rx.dart';
@@ -274,6 +274,63 @@ class App {
   /// Resets the service locator.
   static void resetLocator({bool clearPermanent = false}) {
     AppLocator.instance.reset(clearPermanent: clearPermanent);
+  }
+
+  /// Overrides dependency [T] (with optional [tag]) for testing or scoped injection.
+  ///
+  /// Returns a restorer callback that reverts this override when invoked.
+  static VoidCallback override<T>(T dependency, {String? tag}) {
+    return AppLocator.instance.override<T>(dependency, tag: tag);
+  }
+
+  /// Clears an active dependency override for [T] (with optional [tag]).
+  static void clearOverride<T>({String? tag}) {
+    AppLocator.instance.clearOverride<T>(tag: tag);
+  }
+
+  /// Clears and disposes all active dependency overrides.
+  static void clearOverrides() {
+    AppLocator.instance.clearOverrides();
+  }
+
+  /// Enables or disables recording of context-free navigation calls for unit tests.
+  static void recordNavigationForTesting({
+    bool enabled = true,
+    bool clear = true,
+  }) {
+    AppNavigator.instance.setTestRecording(enabled: enabled, clear: clear);
+  }
+
+  /// Unmodifiable list of navigation calls recorded while
+  /// [recordNavigationForTesting] is active.
+  static List<AppNavigationRecord> get recordedNavigations =>
+      AppNavigator.instance.recordedNavigations;
+
+  /// Resets all global AppForge singletons and state for isolated unit/widget tests.
+  ///
+  /// Clears [AppLocator] registrations and overrides, [AppNavigator] route/argument
+  /// state and test recordings, [AppOverlay], [AppCache], [AppThemeManager],
+  /// [AppLocalization], [AppResponsive], [AppConnectivity], and optionally
+  /// [AppStorage] and [AppEnv].
+  static void resetForTesting({
+    bool resetStorage = true,
+    bool resetEnv = true,
+  }) {
+    AppLocator.instance.clearOverrides();
+    AppLocator.instance.reset(clearPermanent: true);
+    AppNavigator.instance.reset();
+    AppOverlay.instance.reset();
+    AppCache.resetAll();
+    AppThemeManager.instance.reset();
+    AppLocalization.instance.reset();
+    AppResponsive.reset();
+    AppConnectivity.instance.reset();
+    if (resetStorage) {
+      AppStorage.resetAll();
+    }
+    if (resetEnv) {
+      AppEnv.clear();
+    }
   }
 
   // --- App & OS Lifecycle ---
@@ -758,8 +815,21 @@ class App {
   static Future<AppStorage> initStorage({
     String container = 'default',
     String? path,
+    AppStoragePathResolver? pathResolver,
+    AppStorageCodec? codec,
+    AppStorageErrorHandler? onError,
+    bool allowTempFallback = false,
+    bool throwOnCorrupt = false,
   }) =>
-      AppStorage.init(container: container, path: path);
+      AppStorage.init(
+        container: container,
+        path: path,
+        pathResolver: pathResolver,
+        codec: codec,
+        onError: onError,
+        allowTempFallback: allowTempFallback,
+        throwOnCorrupt: throwOnCorrupt,
+      );
 
   /// Synchronously reads a value from the default storage container RAM cache.
   static T? storageRead<T>(String key, {T? defaultValue}) =>

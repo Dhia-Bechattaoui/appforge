@@ -252,6 +252,56 @@ class AppLocator {
   static final AppLocator instance = AppLocator._();
 
   final Map<_InstanceKey, _InstanceEntry<dynamic>> _registry = {};
+  final Map<_InstanceKey, dynamic> _overrides = {};
+
+  /// Registers a test or scoped override for [T] (with optional [tag]).
+  ///
+  /// While active, [find], [findOrNull], and [isRegistered] resolve to
+  /// [dependency] regardless of prior or subsequent [put]/[lazyPut] calls.
+  /// Returns a restorer callback that reverts this override when invoked.
+  VoidCallback override<T>(T dependency, {String? tag}) {
+    final key = _InstanceKey(T, tag);
+    final hadPrevious = _overrides.containsKey(key);
+    final previous = _overrides[key];
+
+    _overrides[key] = dependency;
+    if (dependency is AppController && !dependency.isInitialized) {
+      dependency.onInit();
+      _scheduleOnReady(dependency);
+    }
+
+    return () {
+      if (!identical(_overrides[key], dependency)) return;
+      if (hadPrevious) {
+        _overrides[key] = previous;
+      } else {
+        _overrides.remove(key);
+      }
+      if (dependency is AppController && !dependency.isDisposed) {
+        dependency.onClose();
+      }
+    };
+  }
+
+  /// Clears an active override for [T] (with optional [tag]).
+  void clearOverride<T>({String? tag}) {
+    final key = _InstanceKey(T, tag);
+    if (!_overrides.containsKey(key)) return;
+    final removed = _overrides.remove(key);
+    if (removed is AppController && !removed.isDisposed) {
+      removed.onClose();
+    }
+  }
+
+  /// Clears and disposes all active dependency overrides.
+  void clearOverrides() {
+    for (final value in List<dynamic>.of(_overrides.values)) {
+      if (value is AppController && !value.isDisposed) {
+        value.onClose();
+      }
+    }
+    _overrides.clear();
+  }
 
   /// Registers an existing dependency instance.
   ///
@@ -277,6 +327,9 @@ class AppLocator {
     bool replace = false,
   }) {
     final key = _InstanceKey(T, tag);
+    if (_overrides.containsKey(key)) {
+      return _overrides[key] as T;
+    }
 
     if (_registry.containsKey(key)) {
       final existing = _registry[key]!;
@@ -325,6 +378,9 @@ class AppLocator {
     bool permanent = false,
   }) {
     final key = _InstanceKey(T, tag);
+    if (_overrides.containsKey(key)) {
+      return _overrides[key] as T;
+    }
     final existing = _registry[key];
     if (existing != null) {
       if (existing.isLazy && !existing.isInitialized) {
@@ -365,6 +421,7 @@ class AppLocator {
     bool replace = false,
   }) {
     final key = _InstanceKey(T, tag);
+    if (_overrides.containsKey(key)) return;
     if (_registry.containsKey(key)) {
       final existing = _registry[key]!;
       if (!replace && existing.permanent) {
@@ -398,6 +455,9 @@ class AppLocator {
     bool replace = false,
   }) async {
     final key = _InstanceKey(T, tag);
+    if (_overrides.containsKey(key)) {
+      return _overrides[key] as T;
+    }
     if (!replace && _registry.containsKey(key)) {
       final existing = _registry[key]!;
       if (existing.isLazy && !existing.isInitialized) {
@@ -459,6 +519,9 @@ class AppLocator {
   /// Finds and retrieves a registered dependency of type [T], or `null` if not registered.
   T? findOrNull<T>({String? tag}) {
     final key = _InstanceKey(T, tag);
+    if (_overrides.containsKey(key)) {
+      return _overrides[key] as T?;
+    }
     final entry = _registry[key];
 
     if (entry == null) return null;
@@ -507,14 +570,17 @@ class AppLocator {
     return true;
   }
 
-  /// Checks whether a dependency of type [T] is currently registered.
+  /// Checks whether a dependency of type [T] is currently registered or overridden.
   bool isRegistered<T>({String? tag}) {
     final key = _InstanceKey(T, tag);
-    return _registry.containsKey(key);
+    return _overrides.containsKey(key) || _registry.containsKey(key);
   }
 
   /// Resets the locator. Clears non-permanent dependencies unless [clearPermanent] is true.
   void reset({bool clearPermanent = false}) {
+    if (clearPermanent) {
+      clearOverrides();
+    }
     final keysToRemove = <_InstanceKey>[];
 
     for (final entry in _registry.entries) {
@@ -630,4 +696,71 @@ abstract class AppView<T> extends StatelessWidget {
 
   /// The registered [T] controller instance.
   T get controller => AppLocator.instance.find<T>();
+}
+
+/// Typed dependency override entry for [AppTestScope].
+class AppOverride<T> {
+  /// The replacement dependency instance active inside the test scope.
+  final T value;
+
+  /// Optional locator tag matching `App.find<T>(tag: tag)`.
+  final String? tag;
+
+  const AppOverride(this.value, {this.tag});
+
+  /// Applies this override to [AppLocator.instance] and returns a restorer callback.
+  VoidCallback apply() => AppLocator.instance.override<T>(value, tag: tag);
+}
+
+/// Scoped widget container that applies [overrides] on mount and automatically
+/// restores prior [AppLocator] state when disposed.
+///
+/// Example:
+/// ```dart
+/// await tester.pumpWidget(
+///   AppTestScope(
+///     overrides: [AppOverride<AuthService>(FakeAuthService())],
+///     child: const MasterApp(home: LoginScreen()),
+///   ),
+/// );
+/// ```
+class AppTestScope extends StatefulWidget {
+  /// Typed dependency overrides applied while this widget is mounted.
+  final List<AppOverride<dynamic>> overrides;
+
+  /// The subtree under test.
+  final Widget child;
+
+  const AppTestScope({
+    required this.overrides,
+    required this.child,
+    super.key,
+  });
+
+  @override
+  State<AppTestScope> createState() => _AppTestScopeState();
+}
+
+class _AppTestScopeState extends State<AppTestScope> {
+  final List<VoidCallback> _restorers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    for (final entry in widget.overrides) {
+      _restorers.add(entry.apply());
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final restore in _restorers.reversed) {
+      restore();
+    }
+    _restorers.clear();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -50,6 +50,12 @@ class AppOverlay {
   /// Whether the global loading overlay is currently active on screen.
   bool get isLoadingOpen => _isLoadingOpen;
 
+  /// Resets internal overlay tracking state. Primarily used during test teardown.
+  void reset() {
+    _isLoadingOpen = false;
+    _loadingRoute = null;
+  }
+
   /// Displays a floating, styled snackbar notification from anywhere without [BuildContext].
   ///
   /// Example:

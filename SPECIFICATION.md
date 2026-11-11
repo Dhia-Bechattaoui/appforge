@@ -226,4 +226,5 @@ appforge/
 - [x] **R6: Connectivity, Env & Cache Hardening** (lifecycle-aware connectivity polling, parallel candidate host racing, in-flight check deduplication, POSIX single-quote & CRLF env parsing, monotonic Stopwatch TTL cache, generation-guarded clears).
 - [x] **R7: Deprecated API Removal & Cleanup** (removal of deprecated `MasterApp.smartTheme` and `AppSmartTheme`, strongly typed `initialRoute` and `auditDictionary`, precompiled RegExps with Arabic-Indic digit validation, CLDR fractional/negative plural fixes, `AppLifecycleManager` re-instantiation).
 - [x] **R8: Release 0.12.0** (version bump to 0.12.0, complete audit remediation, finalized changelog & migration guide).
+- [x] **R9: Storage Hardening, Testability & Flutter Web Support** (removed silent `systemTemp` fallback & empty catch blocks, added `AppStorageCodec`/`pathResolver`/`onError`, added `App.override`/`AppTestScope`/`App.resetForTesting`/`App.recordNavigationForTesting`, enabled `web:` via conditional `dart:js_interop` backends).
 

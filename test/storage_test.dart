@@ -1,7 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appforge/appforge.dart';
+
+class _XorStorageCodec extends AppStorageCodec {
+  final int mask;
+  const _XorStorageCodec(this.mask);
+
+  @override
+  List<int> encode(List<int> bytes) => <int>[for (final b in bytes) b ^ mask];
+
+  @override
+  List<int> decode(List<int> bytes) => <int>[for (final b in bytes) b ^ mask];
+}
 
 void main() {
   group('Step 11: Zero-Dependency AppStorage Engine', () {
@@ -325,6 +337,89 @@ void main() {
       final file = File('${tempDir.path}/.appforge_lifecycle_box.json');
       expect(file.existsSync(), true);
       expect(file.readAsStringSync().contains('running'), true);
+    });
+
+    test(
+        'Reports corrupt storage errors via onError and supports throwOnCorrupt',
+        () async {
+      final storageFile = File('${tempDir.path}/.appforge_corrupt_box.json');
+      storageFile.writeAsStringSync('{not_valid_json');
+
+      final reported = <(Object, String)>[];
+      final oldHandler = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      try {
+        final storage = await AppStorage.init(
+          container: 'corrupt_box',
+          path: tempDir.path,
+          onError: (err, _, ctx) => reported.add((err, ctx)),
+        );
+
+        expect(reported, isNotEmpty);
+        expect(storage.lastError, isA<FormatException>());
+
+        AppStorage.resetMemoryCacheOnly();
+        await expectLater(
+          () => AppStorage.init(
+            container: 'corrupt_box',
+            path: tempDir.path,
+            throwOnCorrupt: true,
+          ),
+          throwsA(isA<FormatException>()),
+        );
+      } finally {
+        FlutterError.onError = oldHandler;
+      }
+    });
+
+    test('AppStorageCodec transforms bytes at rest and round-trips cleanly',
+        () async {
+      const codec = _XorStorageCodec(0x5A);
+      final storage = await App.initStorage(
+        container: 'secure_codec_box',
+        path: tempDir.path,
+        codec: codec,
+      );
+
+      storage.write('session_note', 'confidential_payload_42');
+      await storage.save();
+
+      final file = File('${tempDir.path}/.appforge_secure_codec_box.json');
+      final diskBytes = file.readAsBytesSync();
+      expect(utf8.decode(diskBytes, allowMalformed: true),
+          isNot(contains('confidential_payload_42')));
+
+      AppStorage.resetMemoryCacheOnly();
+      final reloaded = await App.initStorage(
+        container: 'secure_codec_box',
+        path: tempDir.path,
+        codec: codec,
+      );
+      expect(reloaded.read<String>('session_note'), 'confidential_payload_42');
+    });
+
+    test('Supports async pathResolver and resolves non-temp desktop directory',
+        () async {
+      final customSubDir = Directory('${tempDir.path}/custom_resolver_dir');
+      final storage = await App.initStorage(
+        container: 'resolver_box',
+        pathResolver: () async => customSubDir.path,
+      );
+      storage.write('ok', true);
+      await storage.save();
+
+      expect(
+        File('${customSubDir.path}/.appforge_resolver_box.json').existsSync(),
+        true,
+      );
+
+      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        final resolved = AppStorage.resolveStorageDirectory();
+        expect(
+          resolved.path.startsWith(Directory.systemTemp.path),
+          isFalse,
+        );
+      }
     });
   });
 }

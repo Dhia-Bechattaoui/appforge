@@ -1,14 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/widgets.dart';
 import '../core/lifecycle.dart';
 import '../state/rx.dart';
+import 'connectivity_probe_io.dart'
+    if (dart.library.js_interop) 'connectivity_probe_web.dart';
 
 /// Zero-dependency network connectivity and internet reachability monitor.
 ///
 /// Unlike standard OS interface checkers which only verify if Wi-Fi or cellular
 /// is toggled on, [AppConnectivity] checks actual end-to-end internet reachability
-/// via low-overhead socket lookups using Dart standard library `dart:io`.
+/// via low-overhead socket lookups on `dart:io` platforms and browser network
+/// state on Flutter Web.
 ///
 /// It provides a reactive [isOnline] observable (`Rx<bool>`) for declarative UI rebuilds,
 /// a broadcast stream, in-flight deduplication, parallel host racing, and automatic
@@ -84,57 +86,13 @@ class AppConnectivity {
     }
   }
 
-  /// Races all candidate hosts in parallel. Resolves immediately when the
-  /// first host responds successfully, or returns false if all hosts fail
-  /// within [timeout].
+  /// Races all candidate hosts in parallel on `dart:io` (or probes browser
+  /// online state on Web).
   Future<bool> _checkHostsParallel(
     List<String> targetHosts,
     Duration timeout,
-  ) async {
-    if (targetHosts.isEmpty) return false;
-
-    final completer = Completer<bool>();
-    int pending = targetHosts.length;
-
-    for (final host in targetHosts) {
-      _pingSingleHost(host, timeout).then((success) {
-        if (success && !completer.isCompleted) {
-          completer.complete(true);
-        } else {
-          pending--;
-          if (pending <= 0 && !completer.isCompleted) {
-            completer.complete(false);
-          }
-        }
-      }).catchError((_) {
-        pending--;
-        if (pending <= 0 && !completer.isCompleted) {
-          completer.complete(false);
-        }
-      });
-    }
-
-    return completer.future.timeout(timeout, onTimeout: () => false);
-  }
-
-  static Future<bool> _pingSingleHost(String host, Duration timeout) async {
-    try {
-      final lookupResults = await InternetAddress.lookup(host)
-          .timeout(timeout, onTimeout: () => []);
-      if (lookupResults.isEmpty || lookupResults.first.rawAddress.isEmpty) {
-        return false;
-      }
-      final socket = await Socket.connect(
-        lookupResults.first,
-        53,
-        timeout: timeout,
-      );
-      socket.destroy();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+  ) =>
+      probeConnectivity(targetHosts, timeout);
 
   /// Starts background periodic connectivity monitoring.
   ///

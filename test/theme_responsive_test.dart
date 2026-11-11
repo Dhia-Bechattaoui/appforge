@@ -232,18 +232,18 @@ void main() {
         ),
       );
 
-      expect(find.text('w:100.0'), findsOneWidget);
-      expect(find.text('h:50.0'), findsOneWidget);
-      expect(find.text('r:16.0'), findsOneWidget);
-      expect(find.text('sp:14.0'), findsOneWidget);
+      expect(find.text('w:${100.0}'), findsOneWidget);
+      expect(find.text('h:${50.0}'), findsOneWidget);
+      expect(find.text('r:${16.0}'), findsOneWidget);
+      expect(find.text('sp:${14.0}'), findsOneWidget);
 
       // Now change physical size to 2x width (1560, 1688) -> logical size (780, 844)
       tester.view.physicalSize = const Size(1560, 1688);
       await tester.pump();
 
       // context.w(100) automatically scales to 200.0 because of inherited MediaQuery dependency
-      expect(find.text('w:200.0'), findsOneWidget);
-      expect(find.text('h:50.0'), findsOneWidget);
+      expect(find.text('w:${200.0}'), findsOneWidget);
+      expect(find.text('h:${50.0}'), findsOneWidget);
     });
   });
 

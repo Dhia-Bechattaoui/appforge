@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/services.dart';
+import 'env_io.dart' if (dart.library.js_interop) 'env_io_stub.dart';
 
 /// Zero-dependency environment configuration loader and parser.
 ///
@@ -50,15 +50,8 @@ class AppEnv {
       final activeBundle = bundle ?? rootBundle;
       content = await activeBundle.loadString(fileName);
     } catch (_) {
-      // 2. Fall back to local file system (useful in tests, desktop & CLI)
-      try {
-        final file = File(fileName);
-        if (file.existsSync()) {
-          content = await file.readAsString();
-        }
-      } catch (_) {
-        // Ignored
-      }
+      // 2. Fall back to local file system on dart:io platforms (tests, desktop & CLI)
+      content = await readLocalEnvFile(fileName);
     }
 
     if (content == null || content.trim().isEmpty) {

@@ -61,6 +61,42 @@ class _AppNavigatorObserver extends NavigatorObserver {
   }
 }
 
+/// Lightweight record of a navigation call captured while [AppNavigator] test
+/// recording is enabled.
+///
+/// Allows pure Dart unit tests to verify controller navigation calls (`App.to`,
+/// `App.off`, `App.offAll`, `App.toNamed`, `App.back`) without pumping a full
+/// widget tree.
+class AppNavigationRecord {
+  /// The navigation action invoked (`'to'`, `'off'`, `'offAll'`, `'toNamed'`,
+  /// `'offNamed'`, `'offAllNamed'`, `'back'`).
+  final String action;
+
+  /// Runtime [Type] of the target widget for widget-based navigation, if any.
+  final Type? pageType;
+
+  /// Route name passed to named or widget navigation, if any.
+  final String? routeName;
+
+  /// Arguments passed with the navigation call.
+  final Object? arguments;
+
+  /// Route parameters passed with the navigation call, if any.
+  final Map<String, String>? parameters;
+
+  /// Result value passed to `back`, `off`, or `offNamed`, if any.
+  final Object? result;
+
+  const AppNavigationRecord({
+    required this.action,
+    this.pageType,
+    this.routeName,
+    this.arguments,
+    this.parameters,
+    this.result,
+  });
+}
+
 /// Context-free navigation controller for AppForge.
 ///
 /// Enables routing, page pushing, popping, and argument passing from anywhere
@@ -87,6 +123,48 @@ class AppNavigator {
 
   final List<Object?> _fallbackArgumentsStack = [];
   Map<String, String> _parameters = {};
+
+  bool _recordForTesting = false;
+  final List<AppNavigationRecord> _recordedNavigations = [];
+
+  /// Whether navigation calls are currently captured in [recordedNavigations].
+  bool get isRecordingForTesting => _recordForTesting;
+
+  /// Unmodifiable snapshot of navigation calls recorded during test mode.
+  List<AppNavigationRecord> get recordedNavigations =>
+      List.unmodifiable(_recordedNavigations);
+
+  /// Enables (or disables) in-memory recording of navigation calls for unit tests.
+  void setTestRecording({bool enabled = true, bool clear = true}) {
+    _recordForTesting = enabled;
+    if (clear) {
+      _recordedNavigations.clear();
+    }
+  }
+
+  /// Clears captured navigation records without changing recording mode.
+  void clearRecordedNavigations() => _recordedNavigations.clear();
+
+  void _record(
+    String action, {
+    Type? pageType,
+    String? routeName,
+    Object? arguments,
+    Map<String, String>? parameters,
+    Object? result,
+  }) {
+    if (!_recordForTesting) return;
+    _recordedNavigations.add(
+      AppNavigationRecord(
+        action: action,
+        pageType: pageType,
+        routeName: routeName,
+        arguments: arguments,
+        parameters: parameters == null ? null : Map.unmodifiable(parameters),
+        result: result,
+      ),
+    );
+  }
 
   /// Current route parameters (e.g. from `/user/:id` or query parameters).
   Map<String, String> get parameters => Map.unmodifiable(_parameters);
@@ -133,17 +211,28 @@ class AppNavigator {
     String? routeName,
     bool fullscreenDialog = false,
   }) {
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'to',
+      pageType: effectivePage.runtimeType,
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
 
-    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.add(arguments);
-
-    final Widget effectivePage =
-        page is Widget Function() ? page() : page as Widget;
 
     final route = AppRouteBuilder.buildRoute<T>(
       page: effectivePage,
@@ -179,20 +268,35 @@ class AppNavigator {
     String? routeName,
     bool fullscreenDialog = false,
   }) {
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'off',
+      pageType: effectivePage.runtimeType,
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+      result: result,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        if (_fallbackArgumentsStack.isNotEmpty) {
+          _fallbackArgumentsStack.removeLast();
+        }
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
 
-    if (parameters != null) setParameters(parameters);
     if (_fallbackArgumentsStack.isNotEmpty) {
       _fallbackArgumentsStack.removeLast();
     }
     _fallbackArgumentsStack.add(arguments);
-
-    final Widget effectivePage =
-        page is Widget Function() ? page() : page as Widget;
 
     final route = AppRouteBuilder.buildRoute<T>(
       page: effectivePage,
@@ -228,18 +332,30 @@ class AppNavigator {
     String? routeName,
     bool fullscreenDialog = false,
   }) {
+    final Widget effectivePage =
+        page is Widget Function() ? page() : page as Widget;
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'offAll',
+      pageType: effectivePage.runtimeType,
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        _fallbackArgumentsStack.clear();
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
 
-    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.clear();
     _fallbackArgumentsStack.add(arguments);
-
-    final Widget effectivePage =
-        page is Widget Function() ? page() : page as Widget;
 
     final route = AppRouteBuilder.buildRoute<T>(
       page: effectivePage,
@@ -265,12 +381,23 @@ class AppNavigator {
     if (preventDuplicates && currentRouteName == routeName) {
       return Future.value(null);
     }
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'toNamed',
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
-    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.add(arguments);
     return state.pushNamed<T>(routeName, arguments: arguments).then((res) {
       if (_observer._routeStack.isEmpty && _fallbackArgumentsStack.isNotEmpty) {
@@ -287,12 +414,27 @@ class AppNavigator {
     Map<String, String>? parameters,
     dynamic result,
   }) {
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'offNamed',
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+      result: result,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        if (_fallbackArgumentsStack.isNotEmpty) {
+          _fallbackArgumentsStack.removeLast();
+        }
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
-    if (parameters != null) setParameters(parameters);
     if (_fallbackArgumentsStack.isNotEmpty) {
       _fallbackArgumentsStack.removeLast();
     }
@@ -318,12 +460,24 @@ class AppNavigator {
     Map<String, String>? parameters,
     bool Function(Route<dynamic>)? predicate,
   }) {
+    if (parameters != null) setParameters(parameters);
+    _record(
+      'offAllNamed',
+      routeName: routeName,
+      arguments: arguments,
+      parameters: parameters,
+    );
+
     final state = currentState;
     if (state == null) {
-      debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      if (_recordForTesting) {
+        _fallbackArgumentsStack.clear();
+        _fallbackArgumentsStack.add(arguments);
+      } else {
+        debugPrint('[AppForge] Cannot navigate: NavigatorState is null.');
+      }
       return Future.value(null);
     }
-    if (parameters != null) setParameters(parameters);
     _fallbackArgumentsStack.clear();
     _fallbackArgumentsStack.add(arguments);
     return state.pushNamedAndRemoveUntil<T>(
@@ -342,16 +496,20 @@ class AppNavigator {
   /// App.back(updatedUser);
   /// ```
   void back<T>([T? result]) {
+    _record('back', result: result);
     final state = currentState;
     if (state != null && state.canPop()) {
       state.pop<T>(result);
     }
   }
 
-  /// Clears all navigation state and argument stacks.
+  /// Clears all navigation state, parameters, test recordings, and argument stacks.
   void reset() {
     _observer._routeStack.clear();
     _fallbackArgumentsStack.clear();
+    _parameters = {};
+    _recordForTesting = false;
+    _recordedNavigations.clear();
   }
 }
 

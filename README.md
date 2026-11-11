@@ -13,10 +13,10 @@
   <a href="https://pub.dev/packages/appforge"><img src="https://img.shields.io/pub/v/appforge.svg?style=flat-square" alt="Pub Version"></a>
   <a href="https://pub.dev/packages/appforge/score"><img src="https://img.shields.io/pub/points/appforge.svg?style=flat-square" alt="Pub Points"></a>
   <img src="https://img.shields.io/badge/dependencies-0-success?style=flat-square" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/dart-%3E%3D3.0.0-blue?style=flat-square" alt="Dart 3">
-  <img src="https://img.shields.io/badge/flutter-%3E%3D3.10.0-02569B?style=flat-square" alt="Flutter">
+  <img src="https://img.shields.io/badge/dart-%3E%3D3.3.0-blue?style=flat-square" alt="Dart 3">
+  <img src="https://img.shields.io/badge/flutter-%3E%3D3.19.0-02569B?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/tests-206%20passing-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-223%20passing-brightgreen?style=flat-square" alt="Tests">
   <a href="https://github.com/sponsors/Dhia-Bechattaoui"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=github-sponsors" alt="Sponsor on GitHub"></a>
   <a href="https://ko-fi.com/I5L22ACCSH"><img src="https://img.shields.io/badge/Support_on-Ko--fi-FF5E5B?style=flat-square&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
@@ -37,11 +37,13 @@
 
 ## Why AppForge?
 
-Modern Flutter applications often pull in 10+ third-party packages just for state, routing, localization, screen scaling, and dialogs. This introduces version locks, dependency graph conflicts, heavy bundle size, and supply-chain vulnerabilities.
+Modern Flutter applications often pull in 10+ third-party packages just for state, routing, localization, screen scaling, and dialogs. This introduces version locks, dependency graph conflicts, heavy bundle size, and transitive upgrade churn across Flutter SDK updates.
 
-**AppForge replaces them all with strictly ZERO external dependencies:**
-- **0 External Packages**: Uses only the Dart Standard Library and Flutter SDK.
+**AppForge replaces them all with strictly ZERO external dependencies across Android, iOS, Desktop, and Web:**
+- **0 External Packages**: Uses only the Dart Standard Library and Flutter SDK (supports all 6 Flutter platforms including **Flutter Web**).
 - **Context-Free Across Async Gaps**: Trigger routing, snackbars, dialogs, and loaders from any service, callback, or controller without passing `BuildContext`.
+- **First-Class Test Isolation**: Swap dependencies with `App.override<T>()` / `AppTestScope`, record controller navigation calls with `App.recordNavigationForTesting()`, and reset all global state in one line via `App.resetForTesting()`.
+- **Crash-Resilient Storage with Optional Codec**: Atomic POSIX persistence on mobile/desktop (`dart:io`) and `localStorage` on Web, observable error hooks (`onError`, `throwOnCorrupt`), and `AppStorageCodec` for application-level encryption *(default JSON storage is unencrypted and meant for preferences/non-sensitive local state)*.
 - **World-Class BiDi & Arabic Engine**: Automatic Unicode UAX #9 directional isolation for mixed Arabic+Latin text, leading `+` phone number preservation, and full 6-form Arabic pluralization.
 - **Micro-Reactive State**: Atomic `.obs` variables, discrete `UiState<T>` machines, and surgical `Watch` leaf rebuilding.
 - **Automated Cleaner & Lossless Rollback**: Built-in CLI (`dart run appforge:clean --fix`) to audit and prune dead translations, unused assets, and orphan Dart files, with 1-second lossless undo via `dart run appforge:clean --revert`.

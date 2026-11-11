@@ -1,26 +1,38 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import '../core/lifecycle.dart';
+import '../platform/io_shim.dart';
+import 'storage_backend_io.dart'
+    if (dart.library.js_interop) 'storage_backend_web.dart';
+import 'storage_types.dart';
+
+export 'storage_types.dart';
 
 /// A lightweight, zero-dependency, crash-resilient key-value storage engine.
 ///
-/// Designed from first principles for Flutter mobile applications:
+/// Designed from first principles for Flutter applications across mobile,
+/// desktop, and web:
 /// - **0 ms synchronous reads**: data lives in an in-memory JSON tree.
 /// - **Isolation by copy**: collections are deep-copied on write and on read, so
-///   mutating a value you read can never silently diverge from what is on disk.
+///   mutating a value you read can never silently diverge from what is persisted.
 /// - **Fail-fast typing**: only JSON types are accepted. Anything else throws an
 ///   [ArgumentError] at the `write` call site instead of corrupting later flushes.
-/// - **Off-main-thread durability**: debounced writes are serialized into a
-///   single-flight queue that writes and `fsync`s through async `dart:io`, then
-///   commits with an atomic rename. The UI isolate never blocks on disk I/O.
+/// - **Off-main-thread durability**: on mobile and desktop (`dart:io`), debounced
+///   writes are serialized into a single-flight queue that writes and `fsync`s
+///   before an atomic rename; on Flutter Web, writes persist via `localStorage`.
 /// - **Background flush**: pending changes are persisted synchronously when the
 ///   OS moves the app to the background (`hidden` / `paused` / `detached`), so a
 ///   process kill right after a change never loses it.
 /// - **Multi-container support**: isolated partitions (e.g. `AppStorage('auth')`).
+///
+/// **Security boundary:** By default, `AppStorage` writes unencrypted UTF-8 JSON
+/// suitable for app preferences, UI state, and non-sensitive local caches. Do
+/// not store sensitive PII, auth tokens, or regulated data in plain JSON; pass
+/// an [AppStorageCodec] to [AppStorage.init] or use platform secure storage
+/// (Keychain/Keystore).
 ///
 /// Example:
 /// ```dart
@@ -32,18 +44,21 @@ import '../core/lifecycle.dart';
 class AppStorage {
   final String containerName;
 
-  File? _storageFile;
+  String? _targetId;
   Map<String, Object?> _data = <String, Object?>{};
   Timer? _debounceTimer;
+  AppStorageCodec? _codec;
+  AppStorageErrorHandler? _onError;
 
   /// Incremented on every mutation.
   int _revision = 0;
 
-  /// Highest revision durably committed to disk.
+  /// Highest revision durably committed to storage.
   int _committedRevision = 0;
 
   Future<void>? _writeInFlight;
   (Object, StackTrace)? _lastWriteError;
+  (Object, StackTrace)? _lastError;
   bool _warnedUninitialized = false;
 
   final Map<String, List<void Function(dynamic)>> _keyListeners = {};
@@ -63,11 +78,18 @@ class AppStorage {
     );
   }
 
-  /// Synchronously returns whether the storage container has been initialized from disk.
-  bool get isInitialized => _storageFile != null;
+  /// Synchronously returns whether the storage container has been initialized.
+  bool get isInitialized => _targetId != null;
 
-  /// Whether there are in-memory changes not yet committed to disk.
+  /// Whether there are in-memory changes not yet committed to storage.
   bool get hasPendingWrites => _committedRevision < _revision;
+
+  /// Most recent error encountered during initialization, recovery, or persistence,
+  /// or `null` if the last operation succeeded.
+  Object? get lastError => _lastError?.$1;
+
+  /// Stack trace associated with [lastError], if any.
+  StackTrace? get lastErrorStackTrace => _lastError?.$2;
 
   /// Snapshot of all keys currently stored.
   Iterable<String> get keys => List<String>.unmodifiable(_data.keys);
@@ -80,48 +102,76 @@ class AppStorage {
   Map<String, dynamic> get toMap =>
       Map<String, dynamic>.unmodifiable(_deepCopy(_data) as Map);
 
-  /// Initializes the storage container on disk.
+  /// Initializes the storage container.
   ///
-  /// If [path] is provided, uses that directory. Otherwise resolves the private,
-  /// persistent application directory of the platform:
-  /// - **iOS**: `Library/Application Support` (not user-visible, never purged).
-  ///   Data from earlier versions stored in `Documents` is migrated automatically.
-  /// - **Android**: the app's private data directory.
+  /// Resolution order on `dart:io` platforms:
+  /// 1. [path], if non-empty.
+  /// 2. [pathResolver], if provided (useful for integrating platform APIs).
+  /// 3. [resolveStorageDirectory] (`allowTempFallback: allowTempFallback`).
   ///
-  /// Calling `init` again for an already initialized container is a no-op.
-  /// Values written before `init` completes are merged on top of the persisted
-  /// data (they are newer) and flushed.
+  /// On Flutter Web, persists automatically via browser `localStorage` under
+  /// `appforge_<container>`.
+  ///
+  /// Pass [codec] to encrypt/decrypt persisted bytes at rest, [onError] to
+  /// observe read/recovery/write failures directly, and [throwOnCorrupt] to
+  /// fail fast when persisted JSON or swap recovery fails instead of starting
+  /// with an empty map.
+  ///
+  /// Calling `init` again for the same resolved target is a no-op (updating
+  /// [codec] and [onError] if provided). Values written before `init` completes
+  /// are merged on top of the persisted data (they are newer) and flushed.
   static Future<AppStorage> init({
     String container = 'default',
     String? path,
+    AppStoragePathResolver? pathResolver,
+    AppStorageCodec? codec,
+    AppStorageErrorHandler? onError,
+    bool allowTempFallback = false,
+    bool throwOnCorrupt = false,
   }) async {
     final storage = AppStorage(container);
-    final autoResolve = path == null || path.isEmpty;
-    final baseDir = autoResolve ? resolveStorageDirectory() : Directory(path);
+    if (codec != null) storage._codec = codec;
+    if (onError != null) storage._onError = onError;
 
-    if (!baseDir.existsSync()) {
-      baseDir.createSync(recursive: true);
-    }
+    final resolvedPath = (path != null && path.isNotEmpty)
+        ? path
+        : (pathResolver != null ? await pathResolver() : null);
+    final autoResolve = resolvedPath == null || resolvedPath.isEmpty;
+    final targetId = computeStorageTargetId(
+      container: container,
+      resolvedPath: resolvedPath,
+      allowTempFallback: allowTempFallback,
+    );
 
-    final file = File('${baseDir.path}/.appforge_$container.json');
-    if (storage._storageFile?.path == file.path) return storage;
+    if (storage._targetId == targetId) return storage;
 
-    final isFirstInit = storage._storageFile == null;
+    final isFirstInit = storage._targetId == null;
     if (!isFirstInit) {
-      // Re-targeting to another directory: persist pending changes first.
+      // Re-targeting to another location: persist pending changes first.
       storage.saveSync();
     }
 
-    if (autoResolve) _migrateLegacyFile(container, file);
+    if (autoResolve) {
+      migrateLegacyStorageIfNeeded(
+        container: container,
+        targetId: targetId,
+        onReport: storage._report,
+      );
+    }
 
-    final persisted = _load(file);
+    final persisted = loadStorageData(
+      targetId,
+      codec: storage._codec,
+      onReport: storage._report,
+      throwOnCorrupt: throwOnCorrupt,
+    );
     final hasPreInitWrites = isFirstInit && storage._data.isNotEmpty;
 
     storage._data = <String, Object?>{
       ...persisted,
       if (isFirstInit) ...storage._data,
     };
-    storage._storageFile = file;
+    storage._targetId = targetId;
     storage._committedRevision = storage._revision;
     _attachLifecycleObserver();
 
@@ -262,33 +312,26 @@ class AppStorage {
     _debounceTimer?.cancel();
     _debounceTimer = null;
 
-    final file = _storageFile;
-    if (file == null || !hasPendingWrites) return;
+    final targetId = _targetId;
+    if (targetId == null || !hasPendingWrites) return;
 
     final revision = _revision;
-    final tmp = File('${file.path}.sync.tmp');
     try {
-      final bytes = _encoder.convert(_data);
-      final raf = tmp.openSync(mode: FileMode.write);
-      try {
-        raf.writeFromSync(bytes);
-        raf.flushSync();
-      } finally {
-        raf.closeSync();
-      }
-      tmp.renameSync(file.path);
+      final bytes = _encodePayload();
+      writeStorageSync(targetId, bytes, isEncoded: _codec != null);
       _committedRevision = revision;
       _lastWriteError = null;
+      _lastError = null;
     } catch (error, stack) {
       _lastWriteError = (error, stack);
       _report(error, stack, 'while synchronously persisting');
     }
   }
 
-  /// Commits pending changes to disk asynchronously, bypassing the debounce.
+  /// Commits pending changes asynchronously, bypassing the debounce.
   ///
   /// Completes once every change made before the call is durable. Throws the
-  /// underlying [FileSystemException] if the disk write fails.
+  /// underlying exception if persistence fails.
   ///
   /// In widget tests (`testWidgets`), real async file I/O only completes inside
   /// `tester.runAsync(...)`; use [saveSync] there instead.
@@ -309,7 +352,7 @@ class AppStorage {
 
   void _markDirty() {
     _revision++;
-    if (_storageFile == null) return; // merged and flushed by init()
+    if (_targetId == null) return; // merged and flushed by init()
     _attachLifecycleObserver();
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounce, () {
@@ -319,12 +362,12 @@ class AppStorage {
   }
 
   /// Single-flight writer: waits for any in-flight write, then writes until the
-  /// on-disk revision catches up with memory.
+  /// persisted revision catches up with memory.
   Future<void> _drain() async {
     while (_writeInFlight != null) {
       await _writeInFlight;
     }
-    if (!hasPendingWrites || _storageFile == null) return;
+    if (!hasPendingWrites || _targetId == null) return;
 
     final completer = Completer<void>();
     _writeInFlight = completer.future;
@@ -338,14 +381,23 @@ class AppStorage {
 
   Future<void> _runWrites() async {
     while (hasPendingWrites) {
-      final file = _storageFile;
-      if (file == null) return;
+      final targetId = _targetId;
+      if (targetId == null) return;
       final revision = _revision;
       try {
         // Snapshot is encoded synchronously, so later mutations cannot tear it.
-        final bytes = _encoder.convert(_data);
-        await _writeAtomic(file, bytes, revision);
+        final bytes = _encodePayload();
+        await writeStorageAtomic(
+          targetId,
+          bytes,
+          isEncoded: _codec != null,
+          shouldCommit: () =>
+              revision > _committedRevision && _targetId == targetId,
+          onCommitted: () => _committedRevision = revision,
+          onReport: _report,
+        );
         _lastWriteError = null;
+        _lastError = null;
       } catch (error, stack) {
         _lastWriteError = (error, stack);
         _report(error, stack, 'while persisting');
@@ -354,24 +406,10 @@ class AppStorage {
     }
   }
 
-  Future<void> _writeAtomic(File file, List<int> bytes, int revision) async {
-    final tmp = File('${file.path}.tmp');
-    final raf = await tmp.open(mode: FileMode.write);
-    try {
-      await raf.writeFrom(bytes);
-      await raf.flush(); // fsync: bytes are on stable storage before the swap
-    } finally {
-      await raf.close();
-    }
-
-    // Commit point. Performed synchronously so it is atomic with respect to
-    // saveSync() on this isolate: an older snapshot can never replace a newer one.
-    if (revision > _committedRevision && _storageFile?.path == file.path) {
-      tmp.renameSync(file.path);
-      _committedRevision = revision;
-    } else {
-      _deleteQuietly(tmp);
-    }
+  List<int> _encodePayload() {
+    final jsonBytes = _encoder.convert(_data);
+    final codec = _codec;
+    return codec != null ? codec.encode(jsonBytes) : jsonBytes;
   }
 
   // ---------------------------------------------------------------------------
@@ -406,6 +444,8 @@ class AppStorage {
   }
 
   void _report(Object error, StackTrace stack, String context) {
+    _lastError = (error, stack);
+    _onError?.call(error, stack, context);
     FlutterError.reportError(FlutterErrorDetails(
       exception: error,
       stack: stack,
@@ -415,7 +455,7 @@ class AppStorage {
   }
 
   void _debugWarnIfUninitialized() {
-    if (!kDebugMode || _storageFile != null || _warnedUninitialized) return;
+    if (!kDebugMode || _targetId != null || _warnedUninitialized) return;
     _warnedUninitialized = true;
     debugPrint(
       'AppStorage("$containerName"): read() called before AppStorage.init() '
@@ -502,120 +542,83 @@ class AppStorage {
   }
 
   static T? _castCollection<T>(Object value) {
-    try {
-      if (value is List) {
-        if (T == List<String>) return List<String>.from(value) as T;
-        if (T == List<int>) return List<int>.from(value) as T;
-        if (T == List<double>) {
-          return <double>[for (final e in value) (e as num).toDouble()] as T;
-        }
-        if (T == List<num>) return List<num>.from(value) as T;
-        if (T == List<bool>) return List<bool>.from(value) as T;
-        if (T == List<Map<String, dynamic>>) {
-          return <Map<String, dynamic>>[
-            for (final e in value) Map<String, dynamic>.from(e as Map),
-          ] as T;
-        }
-      } else if (value is Map) {
-        if (T == Map<String, String>) {
-          return Map<String, String>.from(value) as T;
-        }
-        if (T == Map<String, int>) return Map<String, int>.from(value) as T;
-        if (T == Map<String, double>) {
-          return <String, double>{
-            for (final entry in value.entries)
-              entry.key as String: (entry.value as num).toDouble(),
-          } as T;
-        }
-        if (T == Map<String, num>) return Map<String, num>.from(value) as T;
-        if (T == Map<String, bool>) return Map<String, bool>.from(value) as T;
+    if (value is List) {
+      if (T == List<String>) {
+        return value.every((e) => e is String)
+            ? List<String>.from(value) as T
+            : null;
       }
-    } catch (_) {
-      // Element types do not match T: caller falls back to defaultValue.
+      if (T == List<int>) {
+        return value.every((e) => e is int) ? List<int>.from(value) as T : null;
+      }
+      if (T == List<double>) {
+        return value.every((e) => e is num)
+            ? <double>[for (final e in value) (e as num).toDouble()] as T
+            : null;
+      }
+      if (T == List<num>) {
+        return value.every((e) => e is num) ? List<num>.from(value) as T : null;
+      }
+      if (T == List<bool>) {
+        return value.every((e) => e is bool)
+            ? List<bool>.from(value) as T
+            : null;
+      }
+      if (T == List<Map<String, dynamic>>) {
+        final valid = value.every(
+          (e) => e is Map && e.keys.every((k) => k is String),
+        );
+        return valid
+            ? <Map<String, dynamic>>[
+                for (final e in value) Map<String, dynamic>.from(e as Map),
+              ] as T
+            : null;
+      }
+    } else if (value is Map && value.keys.every((k) => k is String)) {
+      if (T == Map<String, String>) {
+        return value.values.every((v) => v is String)
+            ? Map<String, String>.from(value) as T
+            : null;
+      }
+      if (T == Map<String, int>) {
+        return value.values.every((v) => v is int)
+            ? Map<String, int>.from(value) as T
+            : null;
+      }
+      if (T == Map<String, double>) {
+        return value.values.every((v) => v is num)
+            ? <String, double>{
+                for (final entry in value.entries)
+                  entry.key as String: (entry.value as num).toDouble(),
+              } as T
+            : null;
+      }
+      if (T == Map<String, num>) {
+        return value.values.every((v) => v is num)
+            ? Map<String, num>.from(value) as T
+            : null;
+      }
+      if (T == Map<String, bool>) {
+        return value.values.every((v) => v is bool)
+            ? Map<String, bool>.from(value) as T
+            : null;
+      }
     }
     return null;
   }
 
   // ---------------------------------------------------------------------------
-  // Disk loading & platform paths
+  // Platform directory resolution
   // ---------------------------------------------------------------------------
 
-  /// Loads the committed file; if missing or corrupt, recovers the newest
-  /// intact swap file left by an interrupted write.
-  static Map<String, Object?> _load(File file) {
-    final swaps = [File('${file.path}.tmp'), File('${file.path}.sync.tmp')];
-
-    final committed = _tryDecode(file);
-    if (committed != null) {
-      swaps.forEach(_deleteQuietly);
-      return committed;
-    }
-
-    final intact = <(File, Map<String, Object?>)>[];
-    for (final swap in swaps) {
-      final decoded = _tryDecode(swap);
-      if (decoded != null) intact.add((swap, decoded));
-    }
-    if (intact.isEmpty) return <String, Object?>{};
-
-    intact.sort(
-        (a, b) => b.$1.lastModifiedSync().compareTo(a.$1.lastModifiedSync()));
-    final (newest, data) = intact.first;
-    try {
-      newest.renameSync(file.path);
-    } catch (_) {}
-    swaps.forEach(_deleteQuietly);
-    return data;
-  }
-
-  static Map<String, Object?>? _tryDecode(File file) {
-    try {
-      if (!file.existsSync()) return null;
-      final content = file.readAsStringSync();
-      if (content.trim().isEmpty) return null;
-      final decoded = json.decode(content);
-      return decoded is Map ? Map<String, Object?>.from(decoded) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static void _deleteQuietly(File file) {
-    try {
-      if (file.existsSync()) file.deleteSync();
-    } catch (_) {}
-  }
-
-  /// Moves data written by earlier AppForge versions to the current location.
-  static void _migrateLegacyFile(String container, File target) {
-    if (target.existsSync()) return;
-    try {
-      if (!Platform.isIOS) return;
-      final appRoot = Directory.systemTemp.parent.path;
-      final legacy = File('$appRoot/Documents/.appforge_$container.json');
-      if (legacy.existsSync()) legacy.renameSync(target.path);
-    } catch (_) {}
-  }
-
-  /// Pure Dart resolution of the private, persistent application data folder.
-  static Directory resolveStorageDirectory() {
-    try {
-      final appRoot = Directory.systemTemp.parent.path;
-      if (Platform.isIOS) {
-        // Apple's designated location for app-managed data files: hidden from
-        // the Files app and never purged by the OS (unlike tmp/ and Caches/).
-        return Directory('$appRoot/Library/Application Support');
-      } else if (Platform.isAndroid) {
-        final appFlutter = Directory('$appRoot/app_flutter');
-        if (appFlutter.existsSync()) return appFlutter;
-        final files = Directory('$appRoot/files');
-        if (files.existsSync()) return files;
-      }
-    } catch (_) {}
-
-    // Fallback for desktop development and test environments.
-    return Directory('${Directory.systemTemp.path}/appforge_data');
-  }
+  /// Pure Dart resolution of the private, persistent application data folder on
+  /// `dart:io` platforms.
+  ///
+  /// Throws a [StateError] if no verified persistent application directory can
+  /// be determined on the current platform (unless [allowTempFallback] is
+  /// `true`), and throws [UnsupportedError] on Flutter Web.
+  static Directory resolveStorageDirectory({bool allowTempFallback = false}) =>
+      resolvePlatformStorageDirectory(allowTempFallback: allowTempFallback);
 
   // ---------------------------------------------------------------------------
   // Lifecycle integration
@@ -624,8 +627,8 @@ class AppStorage {
   static bool _lifecycleAttached = false;
 
   /// Registers a process-wide listener that flushes every container
-  /// when the app leaves the foreground. Silently retried later if the Flutter
-  /// binding is not initialized yet.
+  /// when the app leaves the foreground. Retried on later writes if the
+  /// Flutter [WidgetsBinding] is not initialized yet (e.g. pure Dart CLI tests).
   static void _attachLifecycleObserver() {
     if (_lifecycleAttached) return;
     try {
@@ -641,8 +644,8 @@ class AppStorage {
         }
       });
       _lifecycleAttached = true;
-    } catch (_) {
-      // Binding might not be available yet in pure CLI/Dart test environments.
+    } on FlutterError {
+      // WidgetsBinding is not initialized in pure Dart CLI environments.
     }
   }
 
@@ -652,7 +655,7 @@ class AppStorage {
     }
   }
 
-  /// Clears in-memory instances and caches without deleting disk files,
+  /// Clears in-memory instances and caches without deleting persisted data,
   /// simulating an application kill and cold restart (pending, uncommitted
   /// changes are lost exactly as they would be in a real kill).
   static void resetMemoryCacheOnly() {
@@ -669,11 +672,9 @@ class AppStorage {
       storage._data.clear();
       storage._keyListeners.clear();
       storage._allListeners.clear();
-      final file = storage._storageFile;
-      if (file != null) {
-        _deleteQuietly(file);
-        _deleteQuietly(File('${file.path}.tmp'));
-        _deleteQuietly(File('${file.path}.sync.tmp'));
+      final targetId = storage._targetId;
+      if (targetId != null) {
+        deleteStorageTarget(targetId, onReport: storage._report);
       }
     }
     _instances.clear();

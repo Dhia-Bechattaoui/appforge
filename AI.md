@@ -661,23 +661,33 @@ High-performance persistent key-value store built on POSIX atomic file replaceme
 // 1. Initialize once in main() before runApp:
 await App.initStorage();
 
+// Optional: pass custom pathResolver, encryption codec, or error observer:
+await App.initStorage(
+  pathResolver: () async => customAppSupportDirPath,
+  codec: myAesStorageCodec, // Optional AppStorageCodec for encryption at rest
+  onError: (err, stack, ctx) => debugPrint('Storage error [$ctx]: $err'),
+  throwOnCorrupt: true,
+);
+```
+
+```dart
 // 2. Instant 0ms synchronous RAM reads & async atomic writes:
-App.storageWrite('auth_token', 'jwt.secret.here');
+App.storageWrite('onboarded', true);
 App.storageWrite('tags', ['flutter', 'mobile']);
-final token = App.storageRead<String>('auth_token');
+final onboarded = App.storageRead<bool>('onboarded') ?? false;
 final count = App.storageRead<int>('launch_count', defaultValue: 0);
 
 // Typed collection reads with automatic runtime casting:
 final tags = App.storageRead<List<String>>('tags') ?? const [];
 
 // 3. Remove, Has & Clear:
-final exists = App.storageHas('auth_token');
-App.storageRemove('auth_token');
+final exists = App.storageHas('onboarded');
+App.storageRemove('onboarded');
 App.storageClear();
 
 // 4. Reactive key change listeners:
-final cancelKey = App.storage.listenKey('auth_token', (newVal) {
-  print('Token changed: $newVal');
+final cancelKey = App.storage.listenKey('onboarded', (newVal) {
+  print('Onboarded changed: $newVal');
 });
 cancelKey(); // Cancel subscription
 
@@ -689,13 +699,16 @@ MasterApp(
 );
 ```
 
-**Key Durability Guarantees:**
+**Key Durability & Security Guarantees:**
+- **Security boundary:** By default, `AppStorage` writes **unencrypted** UTF-8 JSON for preferences and non-sensitive local state. For sensitive data or secrets, pass a custom `AppStorageCodec` to encrypt/decrypt persisted bytes at rest or use OS Keychain/Keystore.
+- **No silent temp fallback:** Resolves verified OS app-support directories (`Library/Application Support` on iOS/macOS, `app_flutter`/`files` on Android, `APPDATA` on Windows, `XDG_DATA_HOME` on Linux) and throws `StateError` instead of silently falling back to `Directory.systemTemp` unless `allowTempFallback: true` is passed.
+- **Observable load & recovery errors:** Decode, recovery, and migration errors are reported via `FlutterError.reportError`, `onError`, and `storage.lastError` (or rethrown when `throwOnCorrupt: true`).
 - **Supported types (JSON only):** `bool`, `num` (`int`, `double` finite), `String`, `List`, and `Map<String, dynamic>`. Non-JSON objects throw `ArgumentError` immediately at `write()` to protect data integrity. Convert them first (e.g. `DateTime.toIso8601String()`).
 - **Copy-on-read isolation:** Collections returned from `read<T>` are independent deep copies. Mutating a returned `List` or `Map` in place cannot corrupt internal memory or silently desync from disk.
 - **Off-main-thread single-flight queue:** Writes are batched across a 50ms window and flushed asynchronously without blocking the UI thread.
 - **Background auto-flush:** Hooked to `AppLifecycleManager`; changes are flushed synchronously when the app enters `paused`, `hidden`, or `detached` before the OS can terminate the process.
 - **Pre-init write safe:** Writes made before `App.initStorage()` completes are safely held and merged on top of disk data.
-- **iOS Sandbox compliant:** Stored in `Library/Application Support` (hidden from Files app, never purged by OS), automatically migrating legacy files.
+- **Flutter Web support:** On Web (`dart.library.js_interop`), `AppStorage` persists automatically via browser `localStorage`, `AppConnectivity` checks `window.navigator.onLine`, and `AppEnv` loads `.env` from Flutter `AssetBundle` with zero external packages.
 
 ---
 
@@ -859,7 +872,38 @@ final bucket = App.cacheBucket('images', maxEntries: 200);
 
 ---
 
-## 15. Strict Rules & Anti-Patterns for AI Agents
+## 15. Unit & Widget Testing Helpers (`App.override`, `AppTestScope`, `App.resetForTesting`)
+
+AppForge provides built-in test isolation without requiring external mocking or DI packages:
+
+```dart
+setUp(() {
+  App.resetForTesting();
+});
+tearDown(App.resetForTesting);
+
+// 1. Override dependencies in unit or widget tests (immune to later put/lazyPut):
+final restore = App.override<AuthService>(FakeAuthService());
+// ... run test ...
+restore();
+
+// 2. Scoped widget overrides (automatically restored on unmount):
+await tester.pumpWidget(
+  AppTestScope(
+    overrides: [AppOverride<AuthService>(FakeAuthService())],
+    child: const MasterApp(home: LoginScreen()),
+  ),
+);
+
+// 3. Pure Dart navigation assertions without pumping a Navigator:
+App.recordNavigationForTesting();
+await controller.submitLogin();
+expect(App.recordedNavigations.single.routeName, '/home');
+```
+
+---
+
+## 16. Strict Rules & Anti-Patterns for AI Agents
 
 1. **NEVER add 3rd-party dependencies for supported features**:
    - Do NOT install `get`, `provider`, `intl`, `flutter_screenutil`, `shared_preferences`, `flutter_dotenv`, `shimmer`, or caching packages. AppForge handles all of these natively.

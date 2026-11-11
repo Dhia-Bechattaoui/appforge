@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import '../platform/io_shim.dart';
 import '../localization/common_translations.dart';
 import '../localization/app_translations.dart';
 import 'audit_report.dart';

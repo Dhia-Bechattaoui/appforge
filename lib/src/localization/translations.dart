@@ -157,6 +157,22 @@ class AppLocalization {
     genderNotifier.value = gender;
   }
 
+  /// Resets localization state back to defaults (`en_US`, no translations).
+  /// Primarily used for test teardown.
+  void reset() {
+    _translations = null;
+    _snapshottedKeys = const {};
+    _staticCache.clear();
+    _missingKeys.clear();
+    onMissingKey = null;
+    _locale = const ui.Locale('en', 'US');
+    _fallbackLocale = const ui.Locale('en', 'US');
+    _userGender = AppGender.other;
+    _updateLocaleKeys();
+    localeNotifier.value = _locale;
+    genderNotifier.value = _userGender;
+  }
+
   /// Translates a key with optional parameter interpolation, BiDi protection,
   /// and grammatical gender selection.
   String translate(

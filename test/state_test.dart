@@ -813,5 +813,76 @@ void main() {
       expect(localCtrl!.isDisposed, isTrue);
       expect(App.isRegistered<TestCounterController>(), isFalse);
     });
+
+    test('App.override takes precedence over put/lazyPut and restores cleanly',
+        () {
+      final realCtrl = TestCounterController();
+      final fakeCtrl = TestCounterController()..count.value = 42;
+      App.put<TestCounterController>(realCtrl);
+
+      final restore = App.override<TestCounterController>(fakeCtrl);
+      expect(App.isRegistered<TestCounterController>(), isTrue);
+      expect(App.find<TestCounterController>(), same(fakeCtrl));
+      expect(App.find<TestCounterController>().count.value, 42);
+      expect(fakeCtrl.isInitialized, isTrue);
+
+      // Subsequent put/lazyPut calls must not overwrite the active test override
+      App.put<TestCounterController>(TestCounterController(), replace: true);
+      App.lazyPut<TestCounterController>(() => TestCounterController(),
+          replace: true);
+      expect(App.find<TestCounterController>(), same(fakeCtrl));
+
+      restore();
+      expect(fakeCtrl.isDisposed, isTrue);
+      expect(App.find<TestCounterController>(), same(realCtrl));
+    });
+
+    testWidgets(
+        'AppTestScope applies typed overrides and restores prior locator state on unmount',
+        (tester) async {
+      final prodCtrl = TestCounterController()..count.value = 1;
+      final testCtrl = TestCounterController()..count.value = 99;
+      App.put<TestCounterController>(prodCtrl);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppTestScope(
+            overrides: [AppOverride<TestCounterController>(testCtrl)],
+            child: Builder(
+              builder: (_) => Text(
+                'Scoped:${App.find<TestCounterController>().count.value}',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Scoped:99'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(testCtrl.isDisposed, isTrue);
+      expect(App.find<TestCounterController>(), same(prodCtrl));
+    });
+
+    test('App.resetForTesting clears all global singletons and overrides', () {
+      final ctrl = TestCounterController();
+      App.put<TestCounterController>(ctrl, permanent: true);
+      App.override<String>('override_val', tag: 'env_tag');
+      App.setLocale(const Locale('ar'));
+      App.setThemeMode(ThemeMode.dark);
+      AppCache.set('k', 'v');
+      App.recordNavigationForTesting();
+      App.toNamed('/orders');
+
+      App.resetForTesting();
+
+      expect(ctrl.isDisposed, isTrue);
+      expect(App.isRegistered<TestCounterController>(), isFalse);
+      expect(App.isRegistered<String>(tag: 'env_tag'), isFalse);
+      expect(App.locale.languageCode, 'en');
+      expect(App.themeMode, ThemeMode.system);
+      expect(AppCache.has('k'), isFalse);
+      expect(App.recordedNavigations, isEmpty);
+    });
   });
 }

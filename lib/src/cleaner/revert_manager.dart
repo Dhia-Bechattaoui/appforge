@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import '../platform/io_shim.dart';
 
 /// Manages backups and provides zero-dependency one-command rollback for AppForge cleaners.
 ///

@@ -10,8 +10,8 @@
 
 ## Core Capabilities & Quick Reference
 
-### 1. Zero External Dependencies
-- Uses strictly the Dart Standard Library and Flutter SDK.
+### 1. Zero External Dependencies & All 6 Platforms
+- Uses strictly the Dart Standard Library and Flutter SDK (supports Android, iOS, macOS, Windows, Linux, and Web).
 - Never add or recommend third-party packages for state, routing, localization, or screen sizing.
 
 ### 2. Reactive State & Dependency Injection
@@ -24,6 +24,8 @@
 - `UiState<T>` (idle, loading, success, failure) -> `Watch.state(...)`
 - `App.put<T>(T instance)` / `App.lazyPut<T>(() => instance)`
 - `final service = App.find<T>();`
+- `App.override<T>(mockInstance)` / `AppTestScope(overrides: [AppOverride<T>(mock)], child: ...)` / `App.resetForTesting()` (first-class test isolation)
+- `App.recordNavigationForTesting()` / `App.recordedNavigations` (pure unit test assertions for context-free navigation)
 - `AppBind<T>(init: () => T(), autoDispose: true, builder: (context, controller) => ...)` (supports nested route instance stacking)
 
 ### 3. Context-Free Navigation & Overlays
@@ -86,7 +88,9 @@
 - `App.startConnectivityMonitor()` / `App.stopConnectivityMonitor()`
 
 ### 8. Atomic Key-Value Storage (AppStorage)
-- `await App.initStorage()` (initializes RAM cache from disk at startup)
+- `await App.initStorage({path, pathResolver, codec, onError, allowTempFallback, throwOnCorrupt})` (initializes RAM cache from disk at startup)
+- `AppStorageCodec` interface for optional application-level encryption at rest (default JSON storage is unencrypted for preferences/non-sensitive state)
+- Observable error reporting via `onError`, `storage.lastError`, and `throwOnCorrupt: true` (no silent `systemTemp` fallback unless `allowTempFallback: true`)
 - `App.storageRead<T>('key', defaultValue: val)` (0ms synchronous read from RAM)
 - `App.storageRead<List<String>>('tags')` (typed collection read with runtime casting)
 - `App.storageWrite('key', val)` (instant synchronous write + off-main-thread serialized atomic POSIX swap)
