@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart' show MaterialPageRoute;
 
 /// Transition styles supported by AppForge context-free navigation.
 enum AppTransition {

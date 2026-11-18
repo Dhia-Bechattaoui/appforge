@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appforge/appforge.dart';
@@ -320,6 +321,55 @@ void main() {
       // Must switch to Dark Mode! (Previously broken because widget.themeMode ?? activeMode always returned widget.themeMode)
       expect(App.themeMode, equals(ThemeMode.dark));
       expect(find.text('Mode:Dark'), findsOneWidget);
+    });
+
+    test(
+        'App.theme and App.textTheme return safe fallback when context is null',
+        () {
+      App.resetForTesting();
+      expect(App.context, isNull);
+
+      // Should not throw null check error
+      expect(() => App.theme, returnsNormally);
+      expect(App.theme, isNotNull);
+      expect(() => App.textTheme, returnsNormally);
+      expect(App.textTheme, isNotNull);
+
+      // Verify dark fallback
+      App.setThemeMode(ThemeMode.dark);
+      expect(App.theme.brightness, equals(Brightness.dark));
+
+      // Verify light fallback
+      App.setThemeMode(ThemeMode.light);
+      expect(App.theme.brightness, equals(Brightness.light));
+
+      App.resetForTesting();
+    });
+
+    testWidgets('MasterApp forwards onUnknownRoute to MaterialApp',
+        (tester) async {
+      await tester.pumpWidget(
+        MasterApp(
+          initialRoute: '/home',
+          routes: {
+            '/home': (context) => const Text('HomeScreen'),
+          },
+          onUnknownRoute: (settings) {
+            return MaterialPageRoute(
+              builder: (context) => Text('UnknownRoute: ${settings.name}'),
+              settings: settings,
+            );
+          },
+        ),
+      );
+
+      expect(find.text('HomeScreen'), findsOneWidget);
+
+      // Push an unrecognized named route
+      App.toNamed('/does_not_exist');
+      await tester.pumpAndSettle();
+
+      expect(find.text('UnknownRoute: /does_not_exist'), findsOneWidget);
     });
   });
 }

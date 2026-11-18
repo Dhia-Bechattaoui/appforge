@@ -49,6 +49,16 @@ class AppTranslationAuditor {
     r'''\b(?:App\.)?(?:tr|trParams|trPlural|trGender)\(\s*['"]([\w\-]+)['"]''',
   );
 
+  static final RegExp _localeFileNameRegex =
+      RegExp(r'^[a-z]{2}(_[a-z]{2,4})?$');
+  static final RegExp _camelLocaleRegex = RegExp(r'^([a-z]{2})([A-Z]{2})$');
+  static final RegExp _snakeLocaleRegex =
+      RegExp(r'^([a-z]{2})_([a-z]{2})$', caseSensitive: false);
+  static final RegExp _mapEntryRegex =
+      RegExp(r'''^\s*['"]([a-zA-Z0-9_\-]+)['"]\s*:\s*(.*)$''');
+  static final RegExp _mapDefRegex = RegExp(
+      r'''(?:(?:const|final)\s+)?Map<String,\s*String>\s+([a-zA-Z0-9_]+)\s*=\s*\{''');
+
   /// Performs a fast in-memory cross-locale consistency audit on [translationsOrKeys].
   ///
   /// Accepts either an `AppTranslations` instance or a raw `Map<String, Map<String, String>>`.
@@ -274,7 +284,7 @@ class AppTranslationAuditor {
     if (segments.any((s) => dirKeywords.contains(s))) {
       return true;
     }
-    return RegExp(r'^[a-z]{2}(_[a-z]{2,4})?$').hasMatch(name);
+    return _localeFileNameRegex.hasMatch(name);
   }
 
   static bool _isLikelyTranslationDart(File file) {
@@ -300,17 +310,16 @@ class AppTranslationAuditor {
     if (segments.any((s) => dirKeywords.contains(s))) {
       return true;
     }
-    return RegExp(r'^[a-z]{2}(_[a-z]{2,4})?$').hasMatch(name);
+    return _localeFileNameRegex.hasMatch(name);
   }
 
   static String _normalizeLocaleName(String name) {
     final cleaned = name.replaceAll('.dart', '').trim();
-    final camelMatch = RegExp(r'^([a-z]{2})([A-Z]{2})$').firstMatch(cleaned);
+    final camelMatch = _camelLocaleRegex.firstMatch(cleaned);
     if (camelMatch != null) {
       return '${camelMatch.group(1)!.toLowerCase()}_${camelMatch.group(2)!.toUpperCase()}';
     }
-    final snakeMatch = RegExp(r'^([a-z]{2})_([a-z]{2})$', caseSensitive: false)
-        .firstMatch(cleaned);
+    final snakeMatch = _snakeLocaleRegex.firstMatch(cleaned);
     if (snakeMatch != null) {
       return '${snakeMatch.group(1)!.toLowerCase()}_${snakeMatch.group(2)!.toUpperCase()}';
     }
@@ -336,10 +345,8 @@ class AppTranslationAuditor {
       }
 
       final lines = content.split('\n');
-      final entryRegex =
-          RegExp(r'''^\s*['"]([a-zA-Z0-9_\-]+)['"]\s*:\s*(.*)$''');
-      final mapDefRegex = RegExp(
-          r'''(?:(?:const|final)\s+)?Map<String,\s*String>\s+([a-zA-Z0-9_]+)\s*=\s*\{''');
+      final entryRegex = _mapEntryRegex;
+      final mapDefRegex = _mapDefRegex;
 
       String? currentLocale;
       final filename = file.uri.pathSegments.last.replaceAll('.dart', '');
@@ -481,7 +488,7 @@ class AppTranslationAuditor {
 
     // Handle Dart files
     final lines = file.readAsLinesSync();
-    final entryRegex = RegExp(r'''^\s*['"]([a-zA-Z0-9_\-]+)['"]\s*:\s*(.*)$''');
+    final entryRegex = _mapEntryRegex;
     final cleaned = <String>[];
     int removedCount = 0;
     bool skippingMultiline = false;

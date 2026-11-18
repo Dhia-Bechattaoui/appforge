@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appforge/appforge.dart';
@@ -143,6 +144,28 @@ void main() {
 
       expect(find.text('تم بنجاح'), findsOneWidget);
       expect(find.text('تم حفظ الملف في السحابة'), findsOneWidget);
+    });
+
+    testWidgets(
+        'App.snackbar with snackPosition: SnackPosition.top sets top floating margin',
+        (tester) async {
+      await tester.pumpWidget(buildTestApp());
+
+      App.snackbar(
+        'إشعار علوي',
+        'تم التثبيت في أعلى الشاشة',
+        snackPosition: SnackPosition.top,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('إشعار علوي'), findsOneWidget);
+      final snackBarFinder = find.byType(SnackBar);
+      expect(snackBarFinder, findsOneWidget);
+      final SnackBar snackBar = tester.widget(snackBarFinder);
+      expect(snackBar.margin, isNotNull);
+      final margin = snackBar.margin as EdgeInsets;
+      expect(margin.bottom, greaterThan(0.0));
     });
 
     testWidgets('App.dialog opens and dismisses modal dialog without context',

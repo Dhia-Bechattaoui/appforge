@@ -20,6 +20,14 @@ class AppArabic {
   /// Arabic Tatweel / Kashida (\u0640) character.
   static final RegExp tatweelRegex = RegExp(r'\u0640');
 
+  static final RegExp _alifFormsRegex = RegExp(r'[أإآٱ]');
+  static final RegExp _kafFathaSuffixRegex =
+      RegExp(r'([\u0621-\u0652\u0670])كَ([^\u0621-\u0652\u0670]|$)');
+  static final RegExp _kafKasraSuffixRegex =
+      RegExp(r'([\u0621-\u0652\u0670])كِ([^\u0621-\u0652\u0670]|$)');
+  static final RegExp _duplicateHarakatRegex =
+      RegExp(r'([\u064B-\u0652\u0670])\1+');
+
   /// Strips all Arabic Tashkeel (diacritics: فَتْحَة، كَسْرَة، ضَمَّة، تَنْوِين، شَدَّة، سُكُون).
   ///
   /// Example:
@@ -62,7 +70,7 @@ class AppArabic {
     result = stripTatweel(result);
 
     // Normalizing Alif forms: أ, إ, آ, ٱ -> ا
-    result = result.replaceAll(RegExp(r'[أإآٱ]'), 'ا');
+    result = result.replaceAll(_alifFormsRegex, 'ا');
 
     // Normalizing Taa' Marboota to Haa
     result = result.replaceAll('ة', 'ه');
@@ -159,7 +167,7 @@ class AppArabic {
 
     // 1. Any word ending with Kaf-Fatha (كَ) -> Kaf-Kasra (كِ)
     result = result.replaceAllMapped(
-      RegExp(r'([\u0621-\u0652\u0670])كَ([^\u0621-\u0652\u0670]|$)'),
+      _kafFathaSuffixRegex,
       (m) => '${m.group(1)}كِ${m.group(2) ?? ''}',
     );
 
@@ -234,7 +242,7 @@ class AppArabic {
 
     // Collapse any accidental duplicate harakat
     result = result.replaceAllMapped(
-      RegExp(r'([\u064B-\u0652\u0670])\1+'),
+      _duplicateHarakatRegex,
       (m) => m[1]!,
     );
 
@@ -249,7 +257,7 @@ class AppArabic {
 
     // 1. Any word ending with Kaf-Kasra (كِ) -> Kaf-Fatha (كَ)
     result = result.replaceAllMapped(
-      RegExp(r'([\u0621-\u0652\u0670])كِ([^\u0621-\u0652\u0670]|$)'),
+      _kafKasraSuffixRegex,
       (m) => '${m.group(1)}كَ${m.group(2) ?? ''}',
     );
 
@@ -315,7 +323,7 @@ class AppArabic {
 
     // Collapse any accidental duplicate harakat
     result = result.replaceAllMapped(
-      RegExp(r'([\u064B-\u0652\u0670])\1+'),
+      _duplicateHarakatRegex,
       (m) => m[1]!,
     );
 

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-18
+
+### Added
+- **Top-Positioned Floating Snackbars (`SnackPosition.top`)**:
+  - Implemented dynamic top positioning in [`AppOverlay.showSnackbar`](lib/src/navigation/overlays.dart) and `App.snackbar` when `snackPosition: SnackPosition.top`. Computes safe-area margin offsets below the status bar while honoring custom margins if explicitly provided.
+- **Null-Safe Theming Fallbacks (`App.theme` & `App.textTheme`)**:
+  - Hardened [`App.theme`](lib/src/core/app.dart) and `App.textTheme` to safely return `ThemeData.dark()` or `ThemeData.light()` based on `App.isDark` when accessed before `MasterApp` mounts or in headless unit tests where `context` is null.
+- **Comprehensive Teardown in `App.resetForTesting`**:
+  - Expanded [`App.resetForTesting`](lib/src/core/app.dart) to dispose `AppLifecycleManager` and clear custom user-registered Arabic dictionaries (`AppArabicOrthography.clearCustomWords()`, `AppArabic.clearCustomGenderPairs()`, `AppGender.clearCustomNounGenders()`).
+
+### Changed
+- **Flutter 3.50+ / Dart 3.14 Upstream SDK Bridge Decoupling**:
+  - Decoupled style-neutral navigation and layout modules ([`navigator.dart`](lib/src/navigation/navigator.dart), [`transitions.dart`](lib/src/navigation/transitions.dart), [`shimmer.dart`](lib/src/ui/shimmer.dart), [`directional_icon.dart`](lib/src/localization/directional_icon.dart), [`theme_manager.dart`](lib/src/theme/theme_manager.dart)) directly to core `package:flutter/widgets.dart` and `foundation.dart`.
+  - Applied surgical line-level suppression to Material bridge imports in `lib/`, `test/`, and `example/`, completely eliminating the need for blanket analyzer ignores while preserving zero external dependencies and backward compatibility across Flutter `>=3.19.0`.
+  - Deduplicated redundant `package:flutter/material.dart` imports in [`overlays.dart`](lib/src/navigation/overlays.dart).
+
+### Fixed
+- **Unmapped Named Route Handling (`MasterApp.onUnknownRoute`)**:
+  - Forwarded `widget.onUnknownRoute` to `MaterialApp` in [`MasterApp.build`](lib/src/core/master_app.dart). Previously, the property was accepted in the constructor and stored on the widget state but never forwarded to the underlying `MaterialApp`.
+
+### Performance
+- **Precompiled Static Regular Expressions**:
+  - Hoisted all hot-path inline `RegExp` allocations across [`AppShimmer`](lib/src/ui/shimmer.dart), [`AppArabic`](lib/src/localization/arabic_utils.dart), [`AppGender`](lib/src/localization/gender.dart), [`AppTranslationAuditor`](lib/src/cleaner/translation_auditor.dart), and IO storage backends into precompiled `static final` constants, eliminating repeated regex compilation in render-tree skeleton passes and text normalization.
+
 ## [0.6.0] - 2026-11-11
 
 ### Added

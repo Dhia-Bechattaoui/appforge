@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart'
     show ScaffoldMessengerState, ThemeMode, ThemeData, TextTheme, Theme;
 import 'package:flutter/widgets.dart';
@@ -325,6 +326,10 @@ class App {
     AppLocalization.instance.reset();
     AppResponsive.reset();
     AppConnectivity.instance.reset();
+    AppLifecycleManager.instance.dispose();
+    AppArabicOrthography.clearCustomWords();
+    AppArabic.clearCustomGenderPairs();
+    AppGender.clearCustomNounGenders();
     if (resetStorage) {
       AppStorage.resetAll();
     }
@@ -399,11 +404,19 @@ class App {
   /// Changes application theme mode.
   static void changeThemeMode(ThemeMode mode) => setThemeMode(mode);
 
-  /// Current [ThemeData] from active context.
-  static ThemeData get theme => Theme.of(context!);
+  /// Current [ThemeData] from active context, falling back to light or dark theme
+  /// based on [isDark] if accessed before the navigation context is mounted.
+  static ThemeData get theme {
+    final ctx = context;
+    if (ctx != null) {
+      return Theme.of(ctx);
+    }
+    return isDark ? ThemeData.dark() : ThemeData.light();
+  }
 
-  /// Current [TextTheme] from active context.
-  static TextTheme get textTheme => Theme.of(context!).textTheme;
+  /// Current [TextTheme] from active context, falling back to light or dark text theme
+  /// based on [isDark] if accessed before the navigation context is mounted.
+  static TextTheme get textTheme => theme.textTheme;
 
   /// Whether a modal loading overlay is currently active.
   static bool get isDialogOpen => AppOverlay.instance.isLoadingOpen;

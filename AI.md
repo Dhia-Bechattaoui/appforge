@@ -278,6 +278,7 @@ App.snackbar(
   'تم بنجاح',
   'تم تحديث البيانات في السحابة',
   type: AppSnackbarType.success, // success, error, warning, info
+  snackPosition: SnackPosition.top, // top or bottom (defaults to bottom)
 );
 
 // 7. Show context-free modal dialog

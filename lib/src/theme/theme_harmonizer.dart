@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Zero-dependency Adaptive Theme Harmonizer and WCAG 2.1 Auto-Contrast Engine.

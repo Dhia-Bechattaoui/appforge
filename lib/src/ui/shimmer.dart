@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart' show Theme, Colors;
 import 'package:flutter/rendering.dart';
 
 /// Flow direction for the shimmer gradient sweep.
@@ -542,6 +544,8 @@ class _SkeletonScan {
 class _SkeletonCollector {
   _SkeletonCollector(this.textDirection, this.defaultSurfaceColor);
 
+  static final RegExp _arabicCharRegex = RegExp(r'[\u0600-\u06FF]');
+
   final TextDirection textDirection;
   final Color defaultSurfaceColor;
   final Path bones = Path();
@@ -732,7 +736,7 @@ class _SkeletonCollector {
       final boxes = node.getBoxesForSelection(
         TextSelection(baseOffset: 0, extentOffset: text.length),
       );
-      final isArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+      final isArabic = _arabicCharRegex.hasMatch(text);
       final fallbackBottomMargin =
           isArabic ? (bounds.height * 0.35).clamp(6.0, 10.0) : 2.0;
       final fallbackTopMargin = isArabic ? 4.0 : 2.0;

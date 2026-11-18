@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/scheduler.dart';
 
 /// Central dynamic theming engine for AppForge.

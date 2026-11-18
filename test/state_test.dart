@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:appforge/appforge.dart';
@@ -873,6 +874,10 @@ void main() {
       AppCache.set('k', 'v');
       App.recordNavigationForTesting();
       App.toNamed('/orders');
+      App.registerArabicWords({'تجربه': 'تجربة_مخصصة'});
+      App.registerArabicNounGenders({'طاولة_مخصصة': AppGender.male});
+      expect(AppGender.detectFromNoun('طاولة_مخصصة'), AppGender.male);
+      expect(AppArabicOrthography.autocorrectWords('تجربه'), 'تجربة_مخصصة');
 
       App.resetForTesting();
 
@@ -883,6 +888,10 @@ void main() {
       expect(App.themeMode, ThemeMode.system);
       expect(AppCache.has('k'), isFalse);
       expect(App.recordedNavigations, isEmpty);
+      // Custom Arabic dictionaries must be reset
+      expect(AppGender.detectFromNoun('طاولة_مخصصة'), AppGender.female);
+      expect(
+          AppArabicOrthography.autocorrectWords('تجربه'), isNot('تجربة_مخصصة'));
     });
   });
 }

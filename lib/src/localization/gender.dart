@@ -45,6 +45,7 @@ enum AppGender {
 
   /// Registered custom user noun grammatical genders
   static final Map<String, AppGender> _customNounGenders = {};
+  static final RegExp _arabicLettersRegex = RegExp(r'[\u0621-\u064A]');
 
   /// Registers custom grammatical genders (male or female) for domain nouns or brand names.
   ///
@@ -86,7 +87,7 @@ enum AppGender {
     if (trimmed.isEmpty) return AppGender.other;
 
     // Check if word contains Arabic letters (exclude pure numbers, Latin text, punctuation)
-    final hasArabicLetters = RegExp(r'[\u0621-\u064A]').hasMatch(trimmed);
+    final hasArabicLetters = _arabicLettersRegex.hasMatch(trimmed);
     if (!hasArabicLetters) {
       return AppGender.other;
     }

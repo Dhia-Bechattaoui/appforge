@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import '../localization/gender.dart';
 import '../localization/localizations_delegate.dart';
@@ -321,6 +322,7 @@ class _MasterAppState extends State<MasterApp> {
           initialRoute: resolvedInitialRoute,
           routes: widget.routes,
           onGenerateRoute: widget.onGenerateRoute,
+          onUnknownRoute: widget.onUnknownRoute,
           navigatorObservers: [
             AppNavigator.instance.observer,
             ...widget.navigatorObservers

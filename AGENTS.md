@@ -64,25 +64,41 @@ When implementing or modifying localization and text formatting:
 
 ---
 
-## 4. Deprecation & Breaking Change Lifecycle (SemVer Standard)
+## 4. Tier-1 Package Standard: Deprecation, Breaking Changes & Pro Documentation
 
-To maintain absolute stability for consumers, every agent must follow the official Dart/Flutter SemVer lifecycle:
+To maintain absolute stability, professional engineering quality, and predictable SemVer transitions matching the world's top Flutter libraries (`flutter_bloc`, `provider`, `go_router`), every agent must follow the Tier-1 Package Standard:
 
 1. **Never Abruptly Delete or Mutate Public APIs**:
-   - Never remove or break an existing public method/class in a minor or patch update.
-2. **Deprecation Phase (MINOR version increment - `X.(Y+1).0`)**:
-   - When introducing a new replacement API, the old API **must** be marked with Dart's `@Deprecated` annotation:
-     ```dart
-     @Deprecated('Use App.to() instead. Will be removed in v2.0.0.')
-     void navigateTo(...) {
-       App.to(...); // forward to the new implementation
-     }
-     ```
-   - Deprecated methods must continue to work via backwards-compatible shims.
-   - Document in `CHANGELOG.md` under `### Deprecated` with clear before/after examples.
-3. **Removal Phase (MAJOR version increment only - `(X+1).0.0`)**:
-   - **All previously marked `@Deprecated` APIs are removed ONLY when upgrading the MAJOR version** (e.g., `1.x.x` -> `2.0.0`, or `0.1.x` -> `0.2.0` during initial development).
-   - Document in `CHANGELOG.md` under `### Breaking Changes` with a direct Migration Guide.
+   - Never remove, rename, or break an existing public method, class, enum, or parameter in a minor or patch update.
+   - When introducing an improved or redesigned API:
+     1. Build the new implementation alongside the existing one.
+     2. Keep the legacy API fully functional through a backwards-compatible forwarding shim (redirect wrapper calling the new API).
+     3. Mark the legacy API with Dart's `@Deprecated` annotation pointing directly to the replacement:
+        ```dart
+        @Deprecated('Use App.to() instead. Will be removed in v(MAJOR+1).0.0.')
+        void navigateTo(...) {
+          App.to(...); // forwards directly to new implementation
+        }
+        ```
+2. **Two-Phase SemVer Lifecycle (Keep / Graduate / Evict)**:
+   - **Minor Releases (`X.(Y+1).0`) - Deprecation Phase**:
+     - Introduce the new API.
+     - Keep the old API functioning with `@Deprecated` annotation and a working shim.
+     - Document in `CHANGELOG.md` under `### Deprecated` with clear Before/After migration examples.
+     - Update `AI.md` and `llms.txt`.
+   - **Major Releases (`(X+1).0.0`) - Eviction Phase**:
+     - **Remove only the previously deprecated APIs** that completed their deprecation cycle in the prior major series.
+     - If new deprecations are introduced during this major release, **retain them with `@Deprecated`** for removal in `(X+2).0.0`.
+     - Document all removals in `CHANGELOG.md` under `### Breaking Changes` with an explicit Migration Guide.
+3. **Upstream Flutter SDK Deprecation Standard (Platform Bridges)**:
+   - When the Flutter SDK or Dart VM marks an internal SDK library as deprecated (such as `package:flutter/material.dart` transitioning toward modular packages):
+     1. **Decouple First**: Migrate non-Material files (`navigator.dart`, `transitions.dart`, `shimmer.dart`, `directional_icon.dart`, `theme_manager.dart`) to style-neutral core primitives (`package:flutter/widgets.dart`, `foundation.dart`).
+     2. **Protect Backward Compatibility & Zero Dependencies**: Never add unreleased or experimental external packages (`package:material_ui`) that break older stable Flutter versions (`>=3.19.0`) or violate the 0-dependency rule.
+     3. **Surgical Line-Level Suppression Only**: Use targeted `// ignore: deprecated_member_use` exclusively on the bridge import lines. Never use blanket `deprecated_member_use: ignore` in `analysis_options.yaml`.
+4. **Professional Documentation Standard (100% DartDoc Coverage)**:
+   - Every public class, method, extension, property, and typedef must have comprehensive, professional DartDoc comments.
+   - Must include realistic, working code snippets (`/// Example:\n/// ```dart\n/// ...\n/// ````).
+   - Docstrings must be dignified, accurate, and completely free of casual jargon or duplication.
 
 ---
 

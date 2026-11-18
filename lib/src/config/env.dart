@@ -205,8 +205,6 @@ class AppEnv {
 
   /// Pure parser that converts raw `.env` formatted text into a key-value map.
   ///
-  /// Pure parser that converts raw `.env` formatted text into a key-value map.
-  ///
   /// Supports:
   /// - Strip leading `export ` keyword
   /// - Stripping `#` comments and inline `#` outside quotes

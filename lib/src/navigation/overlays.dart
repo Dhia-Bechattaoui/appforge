@@ -1,5 +1,5 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart' as m;
 import 'navigator.dart';
 
 /// Semantic types for AppForge context-free snackbars.
@@ -91,12 +91,32 @@ class AppOverlay {
     final effectiveFg = colorText ?? textColor ?? palette.foreground;
     final effectiveIcon = icon ?? palette.icon;
 
+    EdgeInsetsGeometry effectiveMargin = margin ?? const EdgeInsets.all(16.0);
+    if (snackPosition == SnackPosition.top && margin == null) {
+      final context = AppNavigator.instance.currentContext;
+      if (context != null) {
+        final mediaQuery = MediaQuery.maybeOf(context);
+        if (mediaQuery != null) {
+          final topPadding = mediaQuery.padding.top;
+          final bottomMargin = mediaQuery.size.height - topPadding - 110.0;
+          if (bottomMargin > 0) {
+            effectiveMargin = EdgeInsets.only(
+              left: 16.0,
+              right: 16.0,
+              top: 0.0,
+              bottom: bottomMargin,
+            );
+          }
+        }
+      }
+    }
+
     final snackBar = SnackBar(
       duration: duration,
       behavior: SnackBarBehavior.floating,
       elevation: 4.0,
       backgroundColor: effectiveBg,
-      margin: margin ?? const EdgeInsets.all(16.0),
+      margin: effectiveMargin,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius ?? 12.0),
         side: BorderSide(color: palette.border, width: 1.0),
@@ -167,13 +187,21 @@ class AppOverlay {
       return Future.value(null);
     }
 
-    return m.showDialog<T>(
-      context: context,
-      barrierDismissible: barrierDismissible,
-      barrierColor: barrierColor ?? Colors.black54,
-      barrierLabel: barrierLabel,
-      useSafeArea: useSafeArea,
-      builder: (_) => dialog,
+    final CapturedThemes themes = InheritedTheme.capture(
+      from: context,
+      to: Navigator.of(context).context,
+    );
+
+    return Navigator.of(context).push<T>(
+      DialogRoute<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        barrierColor: barrierColor ?? Colors.black54,
+        barrierLabel: barrierLabel,
+        useSafeArea: useSafeArea,
+        themes: themes,
+        builder: (_) => dialog,
+      ),
     );
   }
 
@@ -198,7 +226,7 @@ class AppOverlay {
       return Future.value(null);
     }
 
-    return m.showModalBottomSheet<T>(
+    return showModalBottomSheet<T>(
       context: context,
       isDismissible: isDismissible,
       backgroundColor: backgroundColor,

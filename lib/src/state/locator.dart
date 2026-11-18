@@ -187,7 +187,6 @@ class _InstanceKey {
 }
 
 /// Metadata container for a registered dependency.
-/// Metadata container for a registered dependency.
 class _InstanceEntry<T> {
   final List<T> _instances = [];
   final T Function()? builder;

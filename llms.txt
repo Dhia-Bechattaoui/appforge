@@ -34,7 +34,7 @@
 - `App.offAll(Screen())`
 - `App.back([result])`
 - `App.navigatorObserver` (wired automatically by `MasterApp`)
-- `App.snackbar('Title', 'Message', type: SnackType.success)`
+- `App.snackbar('Title', 'Message', type: SnackType.success, snackPosition: SnackPosition.top)`
 - `App.dialog(Widget child)`
 - `App.showLoading()` / `App.hideLoading()` (isolated DialogRoute dismissal; never pops error dialogs)
 

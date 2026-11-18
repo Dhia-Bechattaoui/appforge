@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart' show Icons;
 import '../core/app.dart';
 
 /// Extension on [Widget] to provide automatic horizontal mirroring in Right-to-Left (RTL) layouts.

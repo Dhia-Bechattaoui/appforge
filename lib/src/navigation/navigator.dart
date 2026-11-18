@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'transitions.dart';
 
 /// Internal observer that tracks real route transitions across all navigation mechanisms

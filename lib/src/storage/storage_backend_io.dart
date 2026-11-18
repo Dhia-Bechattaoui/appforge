@@ -58,15 +58,17 @@ Directory resolvePlatformStorageDirectory({bool allowTempFallback = false}) {
   );
 }
 
+final RegExp _exeSuffixRegex = RegExp(r'\.exe$', caseSensitive: false);
+final RegExp _sanitizeFolderNameRegex = RegExp(r'[^a-zA-Z0-9._-]');
+
 String _applicationFolderName() {
   final segments = Uri.file(Platform.resolvedExecutable)
       .pathSegments
       .where((s) => s.isNotEmpty)
       .toList();
   if (segments.isEmpty) return 'appforge';
-  final exe =
-      segments.last.replaceAll(RegExp(r'\.exe$', caseSensitive: false), '');
-  final sanitized = exe.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+  final exe = segments.last.replaceAll(_exeSuffixRegex, '');
+  final sanitized = exe.replaceAll(_sanitizeFolderNameRegex, '_');
   return sanitized.isEmpty ? 'appforge' : sanitized;
 }
 
